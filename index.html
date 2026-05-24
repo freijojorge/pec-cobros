@@ -1357,28 +1357,29 @@ window.APP = {
   USERS
 };
 </script>
-<script>// ============================================================
-// FIREBASE SYNC MODULE
-// Sincroniza el estado local con Firestore en tiempo real
-// ============================================================
-
-const FIREBASE_CDN = 'https://www.gstatic.com/firebasejs/10.12.0';
-const DB_DOC = 'pec_cobros/data';
+<script>const DB_DOC = 'pec_cobros/data';
 
 let db = null;
 let unsubscribe = null;
 let syncEnabled = false;
 let lastSyncTime = 0;
 
+const loadScript = (src) => new Promise((resolve, reject) => {
+  const s = document.createElement('script');
+  s.src = src;
+  s.onload = resolve;
+  s.onerror = reject;
+  document.head.appendChild(s);
+});
+
 const initFirebase = async () => {
   try {
-    // Cargar Firebase via CDN scripts si no está cargado
-    if (typeof firebase === 'undefined' && typeof window.firebase === 'undefined') {
+    if (typeof firebase === 'undefined') {
       await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
       await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js');
     }
 
-    const app = firebase.initializeApp(FIREBASE_CONFIG);
+    firebase.initializeApp(FIREBASE_CONFIG);
     db = firebase.firestore();
     syncEnabled = true;
     console.log('Firebase conectado ✓');
@@ -1390,7 +1391,7 @@ const initFirebase = async () => {
 
     if (tieneClientes) {
       const localData = JSON.parse(localStorage.getItem('prestamos_data') || '{}');
-      const cierresIniciales = (localData.cierres || []).filter(c => c.esSaldoInicial || c.id?.includes('inicial'));
+      const cierresIniciales = (localData.cierres || []).filter(c => c.esSaldoInicial || (c.id && c.id.includes('inicial')));
       Object.assign(window.APP.state, remoteData);
       cierresIniciales.forEach(ci => {
         const exists = window.APP.state.cierres.some(c => c.id === ci.id);
@@ -1404,19 +1405,20 @@ const initFirebase = async () => {
         Object.assign(window.APP.state, SEED_DATA);
         localStorage.setItem('prestamos_data', JSON.stringify(SEED_DATA));
         lastSyncTime = Date.now();
-        await docRef.set({ ...window.APP.state, lastUpdate: lastSyncTime });
+        const dataToSync = Object.assign({}, window.APP.state, { lastUpdate: lastSyncTime });
+        delete dataToSync.user;
+        await docRef.set(dataToSync);
         console.log('Seed subido a Firebase ✓');
       }
     }
 
-    // Escuchar cambios en tiempo real
     unsubscribe = docRef.onSnapshot((snapshot) => {
       if (!snapshot.exists) return;
-      const remoteData = snapshot.data();
-      if (remoteData.lastUpdate === lastSyncTime) return;
-      if (remoteData.lastUpdate <= lastSyncTime) return;
-      const cierresIniciales = (window.APP.state.cierres || []).filter(c => c.esSaldoInicial || c.id?.includes('inicial'));
-      Object.assign(window.APP.state, remoteData);
+      const data = snapshot.data();
+      if (!data || data.lastUpdate === lastSyncTime) return;
+      if (data.lastUpdate <= lastSyncTime) return;
+      const cierresIniciales = (window.APP.state.cierres || []).filter(c => c.esSaldoInicial || (c.id && c.id.includes('inicial')));
+      Object.assign(window.APP.state, data);
       cierresIniciales.forEach(ci => {
         const exists = window.APP.state.cierres.some(c => c.id === ci.id);
         if (!exists) window.APP.state.cierres.push(ci);
@@ -1434,22 +1436,14 @@ const initFirebase = async () => {
   }
 };
 
-const loadScript = (src) => new Promise((resolve, reject) => {
-  const s = document.createElement('script');
-  s.src = src;
-  s.onload = resolve;
-  s.onerror = reject;
-  document.head.appendChild(s);
-});
-
 let syncTimeout = null;
-const syncToFirebase = async () => {
+const syncToFirebase = () => {
   if (!syncEnabled || !db) return;
   clearTimeout(syncTimeout);
   syncTimeout = setTimeout(async () => {
     try {
       lastSyncTime = Date.now();
-      const dataToSync = { ...window.APP.state, lastUpdate: lastSyncTime };
+      const dataToSync = Object.assign({}, window.APP.state, { lastUpdate: lastSyncTime });
       delete dataToSync.user;
       await db.collection('pec_cobros').doc('data').set(dataToSync);
       console.log('Datos sincronizados a Firebase ✓');
@@ -1457,28 +1451,6 @@ const syncToFirebase = async () => {
       console.error('Error sincronizando:', err);
     }
   }, 2000);
-};
-
-const syncToFirebaseNow = async () => {
-  if (!db) return;
-  try {
-    lastSyncTime = Date.now();
-    const dataToSync = { ...window.APP.state, lastUpdate: lastSyncTime };
-    delete dataToSync.user;
-    await db.collection('pec_cobros').doc('data').set(dataToSync);
-    console.log('Sync inmediato OK ✓');
-  } catch (err) {
-    console.error('Error sync inmediato:', err);
-  }
-};
-
-const installFirebaseSync = () => {
-  const originalSave = window.APP.save;
-  window.APP.save = () => {
-    originalSave();
-    syncToFirebase();
-  };
-  console.log('Firebase sync instalado ✓');
 };
 
 const showSyncStatus = (connected) => {
@@ -1503,169 +1475,13 @@ const showSyncStatus = (connected) => {
 window.initFirebaseSync = async () => {
   showSyncStatus(false);
   const ok = await initFirebase();
-  installFirebaseSync();
-  showSyncStatus(ok);
-  return ok;
-};
-
-// Inicializar Firebase
-const initFirebase = async () => {
-  try {
-    const { initializeApp } = await import(`${FIREBASE_CDN}/firebase-app.js`);
-    const { getFirestore, doc, onSnapshot, setDoc, getDoc } = await import(`${FIREBASE_CDN}/firebase-firestore.js`);
-
-    const app = initializeApp(FIREBASE_CONFIG);
-    db = getFirestore(app);
-    syncEnabled = true;
-    console.log('Firebase conectado ✓');
-
-    const docRef = doc(db, 'pec_cobros', 'data');
-    const snap = await getDoc(docRef);
-    const remoteData = snap.exists() ? snap.data() : null;
-    const tieneClientes = remoteData && remoteData.clientes && remoteData.clientes.length > 0;
-
-    if (tieneClientes) {
-      // Firebase tiene datos reales — cargarlos pero preservar cierres iniciales locales
-      const localData = JSON.parse(localStorage.getItem('prestamos_data') || '{}');
-      const cierresIniciales = (localData.cierres || []).filter(c => c.esSaldoInicial || c.id?.includes('inicial'));
-      
-      Object.assign(window.APP.state, remoteData);
-      
-      // Re-aplicar cierres iniciales locales si Firebase no los tiene
-      cierresIniciales.forEach(ci => {
-        const exists = window.APP.state.cierres.some(c => c.id === ci.id);
-        if (!exists) window.APP.state.cierres.push(ci);
-      });
-      
-      localStorage.setItem('prestamos_data', JSON.stringify(window.APP.state));
-      console.log('Datos cargados desde Firebase:', remoteData.clientes.length, 'clientes');
-    } else {
-      // Firebase vacío o sin clientes — usar seed y subir
-      console.log('Firebase sin datos — usando seed...');
-      if (typeof SEED_DATA !== 'undefined' && SEED_DATA.clientes && SEED_DATA.clientes.length > 0) {
-        Object.assign(window.APP.state, SEED_DATA);
-        localStorage.setItem('prestamos_data', JSON.stringify(SEED_DATA));
-        console.log('Seed cargado:', SEED_DATA.clientes.length, 'clientes');
-        // Subir inmediatamente a Firebase
-        lastSyncTime = Date.now();
-        const dataToSync = { ...window.APP.state, lastUpdate: lastSyncTime };
-        delete dataToSync.user;
-        await setDoc(docRef, dataToSync);
-        console.log('Seed subido a Firebase ✓');
-      }
-    }
-
-    // Escuchar cambios en tiempo real
-    unsubscribe = onSnapshot(docRef, (snapshot) => {
-      if (!snapshot.exists()) return;
-      const remoteData = snapshot.data();
-      if (remoteData.lastUpdate === lastSyncTime) return;
-      if (remoteData.lastUpdate <= lastSyncTime) return;
-
-      // Preservar cierres iniciales locales
-      const cierresIniciales = (window.APP.state.cierres || []).filter(c => c.esSaldoInicial || c.id?.includes('inicial'));
-      Object.assign(window.APP.state, remoteData);
-      cierresIniciales.forEach(ci => {
-        const exists = window.APP.state.cierres.some(c => c.id === ci.id);
-        if (!exists) window.APP.state.cierres.push(ci);
-      });
-
-      localStorage.setItem('prestamos_data', JSON.stringify(window.APP.state));
-      if (window._currentRefresh) window._currentRefresh();
-      console.log('Datos actualizados desde Firebase');
-    });
-
-    return true;
-  } catch (err) {
-    console.error('Error Firebase:', err);
-    syncEnabled = false;
-    return false;
-  }
-};
-
-// Sync inmediato sin debounce
-const syncToFirebaseNow = async () => {
-  if (!db) return;
-  try {
-    const { doc, setDoc } = await import(`${FIREBASE_CDN}/firebase-firestore.js`);
-    const docRef = doc(db, 'pec_cobros', 'data');
-    lastSyncTime = Date.now();
-    const dataToSync = { ...window.APP.state, lastUpdate: lastSyncTime };
-    delete dataToSync.user;
-    await setDoc(docRef, dataToSync);
-    console.log('Sync inmediato OK ✓');
-  } catch (err) {
-    console.error('Error sync inmediato:', err);
-  }
-};
-
-// Subir datos a Firebase (con debounce)
-let syncTimeout = null;
-const syncToFirebase = async () => {
-  if (!syncEnabled || !db) return;
-  
-  clearTimeout(syncTimeout);
-  syncTimeout = setTimeout(async () => {
-    try {
-      const { doc, setDoc } = await import(`${FIREBASE_CDN}/firebase-firestore.js`);
-      const docRef = doc(db, 'pec_cobros', 'data');
-      
-      lastSyncTime = Date.now();
-      const dataToSync = {
-        ...window.APP.state,
-        lastUpdate: lastSyncTime
-      };
-      
-      // Eliminar campos no serializables
-      delete dataToSync.user;
-      
-      await setDoc(docRef, dataToSync);
-      console.log('Datos sincronizados a Firebase ✓');
-    } catch (err) {
-      console.error('Error sincronizando:', err);
-    }
-  }, SYNC_DEBOUNCE);
-};
-
-// Interceptar el save() original para también sincronizar
-const installFirebaseSync = () => {
+  // Interceptar save para sincronizar
   const originalSave = window.APP.save;
   window.APP.save = () => {
     originalSave();
     syncToFirebase();
   };
   console.log('Firebase sync instalado ✓');
-};
-
-// Indicador de estado de conexión
-const showSyncStatus = (connected) => {
-  let indicator = document.getElementById('sync-indicator');
-  if (!indicator) {
-    indicator = document.createElement('div');
-    indicator.id = 'sync-indicator';
-    indicator.style.cssText = `
-      position: fixed; top: 8px; right: 60px; z-index: 9999;
-      font-size: 10px; font-weight: 600; padding: 3px 8px;
-      border-radius: 10px; font-family: var(--font);
-    `;
-    document.body.appendChild(indicator);
-  }
-  if (connected) {
-    indicator.style.background = 'rgba(0,212,170,0.2)';
-    indicator.style.color = 'var(--accent)';
-    indicator.textContent = '● sync';
-  } else {
-    indicator.style.background = 'rgba(255,170,0,0.2)';
-    indicator.style.color = 'var(--warn)';
-    indicator.textContent = '● offline';
-  }
-};
-
-// Auto-inicializar cuando el DOM esté listo
-window.initFirebaseSync = async () => {
-  showSyncStatus(false);
-  const ok = await initFirebase();
-  installFirebaseSync();
   showSyncStatus(ok);
   return ok;
 };
