@@ -1427,7 +1427,13 @@ const initFirebase = async () => {
         if (!exists) window.APP.state.cierres.push(ci);
       });
       localStorage.setItem('prestamos_data', JSON.stringify(window.APP.state));
-      if (window._currentRefresh) window._currentRefresh();
+      // Refrescar pantalla actual
+      const mainTitle = document.getElementById('header-title');
+      if (mainTitle && mainTitle.textContent === 'Inicio') {
+        if (window.showHome) window.showHome();
+      } else if (window._currentPageRefresh) {
+        window._currentPageRefresh();
+      }
       console.log('Firebase: actualización recibida', new Date().toLocaleTimeString());
     });
 
