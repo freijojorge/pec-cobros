@@ -5,6 +5,9 @@
   <meta name="theme-color" content="#0f1117"><title>GestiónPréstamos</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Firebase compat SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
   <style>@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 
 :root {
@@ -1357,34 +1360,25 @@ window.APP = {
   USERS
 };
 </script>
-<script>const DB_DOC = 'pec_cobros/data';
+<script>
+let _db = null;
+let _syncEnabled = false;
+let _lastSyncTime = 0;
+let _syncTimeout = null;
 
-let db = null;
-let unsubscribe = null;
-let syncEnabled = false;
-let lastSyncTime = 0;
+window.initFirebaseSync = async () => {
+  const indicator = document.createElement('div');
+  indicator.id = 'sync-indicator';
+  indicator.style.cssText = 'position:fixed;top:8px;right:60px;z-index:9999;font-size:10px;font-weight:600;padding:3px 8px;border-radius:10px;background:rgba(255,170,0,0.2);color:var(--warn)';
+  indicator.textContent = '● conectando';
+  document.body.appendChild(indicator);
 
-const loadScript = (src) => new Promise((resolve, reject) => {
-  const s = document.createElement('script');
-  s.src = src;
-  s.onload = resolve;
-  s.onerror = reject;
-  document.head.appendChild(s);
-});
-
-const initFirebase = async () => {
   try {
-    if (typeof firebase === 'undefined') {
-      await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
-      await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js');
-    }
+    const app = firebase.initializeApp(FIREBASE_CONFIG);
+    _db = firebase.firestore();
+    _syncEnabled = true;
 
-    firebase.initializeApp(FIREBASE_CONFIG);
-    db = firebase.firestore();
-    syncEnabled = true;
-    console.log('Firebase conectado ✓');
-
-    const docRef = db.collection('pec_cobros').doc('data');
+    const docRef = _db.collection('pec_cobros').doc('data');
     const snap = await docRef.get();
     const remoteData = snap.exists ? snap.data() : null;
     const tieneClientes = remoteData && remoteData.clientes && remoteData.clientes.length > 0;
@@ -1394,96 +1388,59 @@ const initFirebase = async () => {
       const cierresIniciales = (localData.cierres || []).filter(c => c.esSaldoInicial || (c.id && c.id.includes('inicial')));
       Object.assign(window.APP.state, remoteData);
       cierresIniciales.forEach(ci => {
-        const exists = window.APP.state.cierres.some(c => c.id === ci.id);
-        if (!exists) window.APP.state.cierres.push(ci);
+        if (!window.APP.state.cierres.some(c => c.id === ci.id)) window.APP.state.cierres.push(ci);
       });
       localStorage.setItem('prestamos_data', JSON.stringify(window.APP.state));
-      console.log('Datos cargados desde Firebase:', remoteData.clientes.length, 'clientes');
-    } else {
-      console.log('Firebase sin datos — usando seed...');
-      if (typeof SEED_DATA !== 'undefined' && SEED_DATA.clientes && SEED_DATA.clientes.length > 0) {
-        Object.assign(window.APP.state, SEED_DATA);
-        localStorage.setItem('prestamos_data', JSON.stringify(SEED_DATA));
-        lastSyncTime = Date.now();
-        const dataToSync = Object.assign({}, window.APP.state, { lastUpdate: lastSyncTime });
-        delete dataToSync.user;
-        await docRef.set(dataToSync);
-        console.log('Seed subido a Firebase ✓');
-      }
+      console.log('Firebase: datos cargados', remoteData.clientes.length, 'clientes');
+    } else if (typeof SEED_DATA !== 'undefined' && SEED_DATA.clientes && SEED_DATA.clientes.length > 0) {
+      Object.assign(window.APP.state, SEED_DATA);
+      localStorage.setItem('prestamos_data', JSON.stringify(SEED_DATA));
+      _lastSyncTime = Date.now();
+      await docRef.set(Object.assign({}, window.APP.state, { lastUpdate: _lastSyncTime }));
+      console.log('Firebase: seed subido');
     }
 
-    unsubscribe = docRef.onSnapshot((snapshot) => {
+    // Listener tiempo real
+    docRef.onSnapshot((snapshot) => {
       if (!snapshot.exists) return;
       const data = snapshot.data();
-      if (!data || data.lastUpdate === lastSyncTime) return;
-      if (data.lastUpdate <= lastSyncTime) return;
+      if (!data || data.lastUpdate === _lastSyncTime || data.lastUpdate <= _lastSyncTime) return;
       const cierresIniciales = (window.APP.state.cierres || []).filter(c => c.esSaldoInicial || (c.id && c.id.includes('inicial')));
       Object.assign(window.APP.state, data);
       cierresIniciales.forEach(ci => {
-        const exists = window.APP.state.cierres.some(c => c.id === ci.id);
-        if (!exists) window.APP.state.cierres.push(ci);
+        if (!window.APP.state.cierres.some(c => c.id === ci.id)) window.APP.state.cierres.push(ci);
       });
       localStorage.setItem('prestamos_data', JSON.stringify(window.APP.state));
-      if (window._currentRefresh) window._currentRefresh();
-      console.log('Datos actualizados desde Firebase');
+      if (window.showHome && window._enInicio) window.showHome();
+      console.log('Firebase: actualización recibida');
     });
 
-    return true;
-  } catch (err) {
-    console.error('Error Firebase:', err);
-    syncEnabled = false;
-    return false;
-  }
-};
+    // Interceptar save
+    const origSave = window.APP.save;
+    window.APP.save = () => {
+      origSave();
+      clearTimeout(_syncTimeout);
+      _syncTimeout = setTimeout(async () => {
+        try {
+          _lastSyncTime = Date.now();
+          const data = Object.assign({}, window.APP.state, { lastUpdate: _lastSyncTime });
+          delete data.user;
+          await _db.collection('pec_cobros').doc('data').set(data);
+          console.log('Firebase: sync OK');
+        } catch(e) { console.error('Firebase sync error:', e); }
+      }, 1500);
+    };
 
-let syncTimeout = null;
-const syncToFirebase = () => {
-  if (!syncEnabled || !db) return;
-  clearTimeout(syncTimeout);
-  syncTimeout = setTimeout(async () => {
-    try {
-      lastSyncTime = Date.now();
-      const dataToSync = Object.assign({}, window.APP.state, { lastUpdate: lastSyncTime });
-      delete dataToSync.user;
-      await db.collection('pec_cobros').doc('data').set(dataToSync);
-      console.log('Datos sincronizados a Firebase ✓');
-    } catch (err) {
-      console.error('Error sincronizando:', err);
-    }
-  }, 2000);
-};
-
-const showSyncStatus = (connected) => {
-  let indicator = document.getElementById('sync-indicator');
-  if (!indicator) {
-    indicator = document.createElement('div');
-    indicator.id = 'sync-indicator';
-    indicator.style.cssText = 'position:fixed;top:8px;right:60px;z-index:9999;font-size:10px;font-weight:600;padding:3px 8px;border-radius:10px;font-family:var(--font)';
-    document.body.appendChild(indicator);
-  }
-  if (connected) {
     indicator.style.background = 'rgba(0,212,170,0.2)';
     indicator.style.color = 'var(--accent)';
     indicator.textContent = '● sync';
-  } else {
-    indicator.style.background = 'rgba(255,170,0,0.2)';
-    indicator.style.color = 'var(--warn)';
+    console.log('Firebase conectado ✓');
+    return true;
+  } catch(e) {
+    console.error('Firebase error:', e);
     indicator.textContent = '● offline';
+    return false;
   }
-};
-
-window.initFirebaseSync = async () => {
-  showSyncStatus(false);
-  const ok = await initFirebase();
-  // Interceptar save para sincronizar
-  const originalSave = window.APP.save;
-  window.APP.save = () => {
-    originalSave();
-    syncToFirebase();
-  };
-  console.log('Firebase sync instalado ✓');
-  showSyncStatus(ok);
-  return ok;
 };
 </script>
 <script>(function() {
