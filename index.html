@@ -1363,13 +1363,150 @@ window.APP = {
 // ============================================================
 
 const FIREBASE_CDN = 'https://www.gstatic.com/firebasejs/10.12.0';
-const DB_DOC = 'pec_cobros/data'; // Un solo documento con todo el estado
+const DB_DOC = 'pec_cobros/data';
 
 let db = null;
 let unsubscribe = null;
 let syncEnabled = false;
 let lastSyncTime = 0;
-const SYNC_DEBOUNCE = 2000; // 2 segundos de debounce para no saturar
+
+const initFirebase = async () => {
+  try {
+    // Cargar Firebase via CDN scripts si no está cargado
+    if (typeof firebase === 'undefined' && typeof window.firebase === 'undefined') {
+      await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
+      await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js');
+    }
+
+    const app = firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+    syncEnabled = true;
+    console.log('Firebase conectado ✓');
+
+    const docRef = db.collection('pec_cobros').doc('data');
+    const snap = await docRef.get();
+    const remoteData = snap.exists ? snap.data() : null;
+    const tieneClientes = remoteData && remoteData.clientes && remoteData.clientes.length > 0;
+
+    if (tieneClientes) {
+      const localData = JSON.parse(localStorage.getItem('prestamos_data') || '{}');
+      const cierresIniciales = (localData.cierres || []).filter(c => c.esSaldoInicial || c.id?.includes('inicial'));
+      Object.assign(window.APP.state, remoteData);
+      cierresIniciales.forEach(ci => {
+        const exists = window.APP.state.cierres.some(c => c.id === ci.id);
+        if (!exists) window.APP.state.cierres.push(ci);
+      });
+      localStorage.setItem('prestamos_data', JSON.stringify(window.APP.state));
+      console.log('Datos cargados desde Firebase:', remoteData.clientes.length, 'clientes');
+    } else {
+      console.log('Firebase sin datos — usando seed...');
+      if (typeof SEED_DATA !== 'undefined' && SEED_DATA.clientes && SEED_DATA.clientes.length > 0) {
+        Object.assign(window.APP.state, SEED_DATA);
+        localStorage.setItem('prestamos_data', JSON.stringify(SEED_DATA));
+        lastSyncTime = Date.now();
+        await docRef.set({ ...window.APP.state, lastUpdate: lastSyncTime });
+        console.log('Seed subido a Firebase ✓');
+      }
+    }
+
+    // Escuchar cambios en tiempo real
+    unsubscribe = docRef.onSnapshot((snapshot) => {
+      if (!snapshot.exists) return;
+      const remoteData = snapshot.data();
+      if (remoteData.lastUpdate === lastSyncTime) return;
+      if (remoteData.lastUpdate <= lastSyncTime) return;
+      const cierresIniciales = (window.APP.state.cierres || []).filter(c => c.esSaldoInicial || c.id?.includes('inicial'));
+      Object.assign(window.APP.state, remoteData);
+      cierresIniciales.forEach(ci => {
+        const exists = window.APP.state.cierres.some(c => c.id === ci.id);
+        if (!exists) window.APP.state.cierres.push(ci);
+      });
+      localStorage.setItem('prestamos_data', JSON.stringify(window.APP.state));
+      if (window._currentRefresh) window._currentRefresh();
+      console.log('Datos actualizados desde Firebase');
+    });
+
+    return true;
+  } catch (err) {
+    console.error('Error Firebase:', err);
+    syncEnabled = false;
+    return false;
+  }
+};
+
+const loadScript = (src) => new Promise((resolve, reject) => {
+  const s = document.createElement('script');
+  s.src = src;
+  s.onload = resolve;
+  s.onerror = reject;
+  document.head.appendChild(s);
+});
+
+let syncTimeout = null;
+const syncToFirebase = async () => {
+  if (!syncEnabled || !db) return;
+  clearTimeout(syncTimeout);
+  syncTimeout = setTimeout(async () => {
+    try {
+      lastSyncTime = Date.now();
+      const dataToSync = { ...window.APP.state, lastUpdate: lastSyncTime };
+      delete dataToSync.user;
+      await db.collection('pec_cobros').doc('data').set(dataToSync);
+      console.log('Datos sincronizados a Firebase ✓');
+    } catch (err) {
+      console.error('Error sincronizando:', err);
+    }
+  }, 2000);
+};
+
+const syncToFirebaseNow = async () => {
+  if (!db) return;
+  try {
+    lastSyncTime = Date.now();
+    const dataToSync = { ...window.APP.state, lastUpdate: lastSyncTime };
+    delete dataToSync.user;
+    await db.collection('pec_cobros').doc('data').set(dataToSync);
+    console.log('Sync inmediato OK ✓');
+  } catch (err) {
+    console.error('Error sync inmediato:', err);
+  }
+};
+
+const installFirebaseSync = () => {
+  const originalSave = window.APP.save;
+  window.APP.save = () => {
+    originalSave();
+    syncToFirebase();
+  };
+  console.log('Firebase sync instalado ✓');
+};
+
+const showSyncStatus = (connected) => {
+  let indicator = document.getElementById('sync-indicator');
+  if (!indicator) {
+    indicator = document.createElement('div');
+    indicator.id = 'sync-indicator';
+    indicator.style.cssText = 'position:fixed;top:8px;right:60px;z-index:9999;font-size:10px;font-weight:600;padding:3px 8px;border-radius:10px;font-family:var(--font)';
+    document.body.appendChild(indicator);
+  }
+  if (connected) {
+    indicator.style.background = 'rgba(0,212,170,0.2)';
+    indicator.style.color = 'var(--accent)';
+    indicator.textContent = '● sync';
+  } else {
+    indicator.style.background = 'rgba(255,170,0,0.2)';
+    indicator.style.color = 'var(--warn)';
+    indicator.textContent = '● offline';
+  }
+};
+
+window.initFirebaseSync = async () => {
+  showSyncStatus(false);
+  const ok = await initFirebase();
+  installFirebaseSync();
+  showSyncStatus(ok);
+  return ok;
+};
 
 // Inicializar Firebase
 const initFirebase = async () => {
