@@ -1439,19 +1439,19 @@ const initFirebase = async () => {
 
 let syncTimeout = null;
 const syncToFirebase = () => {
-  if (!syncEnabled || !db) return;
   clearTimeout(syncTimeout);
   syncTimeout = setTimeout(async () => {
     try {
+      const firedb = (db) ? db : firebase.firestore();
       lastSyncTime = Date.now();
       const dataToSync = Object.assign({}, window.APP.state, { lastUpdate: lastSyncTime });
       delete dataToSync.user;
-      await db.collection('pec_cobros').doc('data').set(dataToSync);
-      console.log('Datos sincronizados a Firebase ✓');
+      await firedb.collection('pec_cobros').doc('data').set(dataToSync);
+      console.log('Firebase: sync OK', new Date().toLocaleTimeString());
     } catch (err) {
       console.error('Error sincronizando:', err);
     }
-  }, 2000);
+  }, 1500);
 };
 
 const showSyncStatus = (connected) => {
