@@ -1682,6 +1682,7 @@ const showHome = () => {
         <div style="font-size:22px;font-weight:700">Hola, ${currentUser.name} 👋</div>
         <div style="font-size:13px;color:var(--text2);margin-top:2px">${formatDate(hoy)}</div>
       </div>
+      ${isAdmin ? `<button class="btn btn-secondary btn-sm" style="width:auto;padding:8px 14px;font-size:13px" onclick="recargarDatos()">🔄 Actualizar</button>` : ''}
     </div>
     <div class="divider"></div>
     <div class="stat-grid">
@@ -3693,6 +3694,33 @@ const archivarCliente = (clienteId) => {
   showHome();
 };
 
+// ===== RECARGAR DATOS DESDE FIREBASE =====
+const recargarDatos = async () => {
+  if (!window._db && !window.firebase) {
+    toast('Sin conexión a Firebase', 'error');
+    return;
+  }
+  try {
+    toast('Actualizando...');
+    const db = window._db || firebase.firestore();
+    const snap = await db.collection('pec_cobros').doc('data').get();
+    if (snap.exists) {
+      const data = snap.data();
+      const cierresIniciales = (APP.state.cierres || []).filter(c => c.esSaldoInicial || (c.id && c.id.includes('inicial')));
+      Object.assign(APP.state, data);
+      cierresIniciales.forEach(ci => {
+        if (!APP.state.cierres.some(c => c.id === ci.id)) APP.state.cierres.push(ci);
+      });
+      localStorage.setItem('prestamos_data', JSON.stringify(APP.state));
+      showHome();
+      toast('✅ Datos actualizados');
+    }
+  } catch(e) {
+    toast('Error al actualizar', 'error');
+    console.error(e);
+  }
+};
+
 // ===== EDITAR CLIENTE (admin) =====
 const showEditCliente = (clienteId) => {
   const cl = state.clientes.find(c => c.id === clienteId);
@@ -4034,5 +4062,6 @@ window.renderResumenDia=renderResumenDia; window.eliminarCobro=eliminarCobro;
 window.showHistorialCliente=showHistorialCliente; window.exportarBackupExcel=exportarBackupExcel;
 window.getClientesSinActividad=getClientesSinActividad;
 window.showEditCliente=showEditCliente; window.confirmarEditCliente=confirmarEditCliente;
+window.recargarDatos=recargarDatos;
 })();</script>
 </body></html>
