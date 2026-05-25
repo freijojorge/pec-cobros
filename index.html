@@ -1484,6 +1484,7 @@ window.initFirebaseSync = async () => {
   };
   console.log('Firebase sync instalado ✓');
   showSyncStatus(ok);
+  window._syncReady = ok;
   return ok;
 };
 </script>
@@ -3696,13 +3697,13 @@ const archivarCliente = (clienteId) => {
 
 // ===== RECARGAR DATOS DESDE FIREBASE =====
 const recargarDatos = async () => {
-  if (!window._db && !window.firebase) {
-    toast('Sin conexión a Firebase', 'error');
-    return;
-  }
   try {
     toast('Actualizando...');
-    const db = window._db || firebase.firestore();
+    // Intentar conectar Firebase si no está conectado
+    if (!window._syncReady) {
+      if (window.initFirebaseSync) await window.initFirebaseSync();
+    }
+    const db = firebase.firestore();
     const snap = await db.collection('pec_cobros').doc('data').get();
     if (snap.exists) {
       const data = snap.data();
@@ -3714,10 +3715,12 @@ const recargarDatos = async () => {
       localStorage.setItem('prestamos_data', JSON.stringify(APP.state));
       showHome();
       toast('✅ Datos actualizados');
+    } else {
+      toast('Sin datos en Firebase', 'error');
     }
   } catch(e) {
-    toast('Error al actualizar', 'error');
-    console.error(e);
+    console.error('Error recargar:', e);
+    toast('Error: ' + e.message, 'error');
   }
 };
 
