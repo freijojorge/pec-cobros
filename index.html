@@ -1410,22 +1410,18 @@ const initFirebase = async () => {
     const versionOk = remoteData && (remoteData._seedVersion || 0) >= 7;
 
     if (tieneClientes && versionOk) {
-      const remoteTime = remoteData.lastUpdate || 0;
-      // Solo cargar de Firebase si es más nuevo que mi último sync
-      if (remoteTime > lastSyncTime) {
-        const localData = JSON.parse(localStorage.getItem('prestamos_data') || '{}');
-        const cierresIniciales = (localData.cierres || []).filter(c => c.esSaldoInicial || (c.id && c.id.includes('inicial')));
-        Object.assign(window.APP.state, remoteData);
-        cierresIniciales.forEach(ci => {
-          const exists = window.APP.state.cierres.some(c => c.id === ci.id);
-          if (!exists) window.APP.state.cierres.push(ci);
-        });
-        localStorage.setItem('prestamos_data', JSON.stringify(window.APP.state));
-        console.log('Firebase: datos cargados', remoteData.clientes.length, 'clientes');
-        setTimeout(() => { if (window.showHome) window.showHome(); }, 100);
-      } else {
-        console.log('Firebase: datos locales más nuevos, manteniendo localStorage');
-      }
+      const localData = JSON.parse(localStorage.getItem('prestamos_data') || '{}');
+      const cierresIniciales = (localData.cierres || []).filter(c => c.esSaldoInicial || (c.id && c.id.includes('inicial')));
+      Object.assign(window.APP.state, remoteData);
+      cierresIniciales.forEach(ci => {
+        const exists = window.APP.state.cierres.some(c => c.id === ci.id);
+        if (!exists) window.APP.state.cierres.push(ci);
+      });
+      localStorage.setItem('prestamos_data', JSON.stringify(window.APP.state));
+      lastSyncTime = remoteData.lastUpdate || 0;
+      localStorage.setItem('_lastSyncTime', String(lastSyncTime));
+      console.log('Firebase: datos cargados', remoteData.clientes.length, 'clientes');
+      setTimeout(() => { if (window.showHome) window.showHome(); }, 100);
     } else {
       console.log('Firebase sin datos — subiendo seed...');
       if (typeof SEED_DATA !== 'undefined' && SEED_DATA.clientes && SEED_DATA.clientes.length > 0) {
@@ -1446,8 +1442,8 @@ const initFirebase = async () => {
       const data = snapshot.data();
       if (!data) return;
       const remoteTime = data.lastUpdate || 0;
-      // Ignorar si es mi propio update o si es más viejo que mi última sincronización
-      if (remoteTime <= lastSyncTime) return;
+      // Ignorar solo si es exactamente mi propio update
+      if (remoteTime === lastSyncTime) return;
       const cierresIniciales = (window.APP.state.cierres || []).filter(c => c.esSaldoInicial || (c.id && c.id.includes('inicial')));
       Object.assign(window.APP.state, data);
       cierresIniciales.forEach(ci => {
