@@ -2020,11 +2020,11 @@ const showCliente = (clienteId) => {
             <div style="margin-top:8px">
               ${cuotasVencidas.length > 0 ? `
                 <div style="font-size:11px;color:var(--danger);font-weight:600;margin-bottom:4px">VENCIDAS (${cuotasVencidas.length})</div>
-                ${cuotasVencidas.map(c => `<div style="font-size:12px;color:var(--text2);padding:2px 0">• Cuota ${c.numero} — ${formatDate(c.fecha)} — ${formatMoney(c.monto)}</div>`).join('')}
+                ${cuotasVencidas.map(c => `<div style="font-size:12px;color:var(--text2);padding:2px 0">• Cuota ${c.numero} — ${formatDate(c.fecha)} — ${formatMoney(c.saldoPendiente !== undefined ? c.saldoPendiente : c.monto)}${c.estado === 'parcial' ? ' <span style=\"color:var(--warn)\">(parcial)</span>' : ''}</div>`).join('')}
               ` : ''}
               ${cuotaHoy ? `
                 <div style="font-size:11px;color:var(--accent);font-weight:600;margin:6px 0 4px">HOY</div>
-                <div style="font-size:12px;padding:2px 0">• Cuota ${cuotaHoy.numero} — ${formatDate(cuotaHoy.fecha)} — ${formatMoney(cuotaHoy.monto)}</div>
+                <div style="font-size:12px;padding:2px 0">• Cuota ${cuotaHoy.numero} — ${formatDate(cuotaHoy.fecha)} — ${formatMoney(cuotaHoy.saldoPendiente !== undefined ? cuotaHoy.saldoPendiente : cuotaHoy.monto)}${cuotaHoy.estado === 'parcial' ? ' <span style=\"color:var(--warn)\">(parcial)</span>' : ''}</div>
               ` : ''}
               ${cuotasFuturas.length > 0 ? `
                 <div style="font-size:11px;color:var(--text3);font-weight:600;margin:6px 0 4px">PRÓXIMAS (${cuotasFuturas.length})</div>
