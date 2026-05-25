@@ -767,17 +767,21 @@ let state = {
 };
 
 // --- STORAGE ---
-const save = () => localStorage.setItem('prestamos_data', JSON.stringify({
-  clientes: state.clientes,
-  planes: state.planes,
-  cuotas: state.cuotas,
-  cobros: state.cobros,
-  renovaciones: state.renovaciones,
-  gastos: state.gastos,
-  cierres: state.cierres,
-  movimientosJorge: state.movimientosJorge,
-  usuarios: state.usuarios
-}));
+const save = () => {
+  localStorage.setItem('prestamos_data', JSON.stringify({
+    clientes: state.clientes,
+    planes: state.planes,
+    cuotas: state.cuotas,
+    cobros: state.cobros,
+    renovaciones: state.renovaciones,
+    gastos: state.gastos,
+    cierres: state.cierres,
+    movimientosJorge: state.movimientosJorge,
+    usuarios: state.usuarios
+  }));
+  // Sync a Firebase si está disponible
+  if (window._syncToFirebase) window._syncToFirebase();
+};
 
 const load = () => {
   const d = localStorage.getItem('prestamos_data');
@@ -1485,6 +1489,7 @@ window.initFirebaseSync = async () => {
   console.log('Firebase sync instalado ✓');
   showSyncStatus(ok);
   window._syncReady = ok;
+  window._syncToFirebase = syncToFirebase;
   return ok;
 };
 </script>
