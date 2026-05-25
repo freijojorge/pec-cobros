@@ -1180,9 +1180,37 @@ const getClienteResumen = (clienteId) => {
 // --- CRITERIO DE RENOVACIÓN (85%) ---
 const puedeRenovar = (planId) => {
   const plan = state.planes.find(p => p.id === planId);
-  if (!plan) return false;
-  const pagadas = state.cuotas.filter(c => c.planId === planId && c.estado === 'pagada').length;
+  if (!plan || plan.estado !== 'activo') return false;
+  const pagadas = state.cuotas.filter(c => c.planId === planId && (c.estado === 'pagada' || c.estado === 'saldada_renovacion')).length;
   return pagadas >= Math.ceil(plan.totalCuotas * 0.85);
+};
+
+const estadoRenovacion = (planId) => {
+  const plan = state.planes.find(p => p.id === planId);
+  if (!plan || plan.estado !== 'activo') return null;
+  const hoy = today();
+  const totalCuotas = plan.totalCuotas;
+  const pagadas = state.cuotas.filter(c => c.planId === planId && (c.estado === 'pagada' || c.estado === 'saldada_renovacion')).length;
+  const vencidas = state.cuotas.filter(c => c.planId === planId && c.estado === 'pendiente' && c.fecha < hoy).length;
+  const umbral85 = Math.ceil(totalCuotas * 0.85);
+  const umbral100 = totalCuotas;
+  const tieneAtraso = vencidas > 0;
+
+  // Calcular fecha en que llegaría al 85% si pagara todo
+  const cuotasPorPagar = state.cuotas.filter(c => c.planId === planId).sort((a, b) => a.numero - b.numero);
+  const fechaUmbral85 = cuotasPorPagar.length >= umbral85 ? cuotasPorPagar[umbral85 - 1].fecha : null;
+  const fechaUmbral100 = cuotasPorPagar.length >= umbral100 ? cuotasPorPagar[umbral100 - 1].fecha : null;
+
+  if (pagadas >= umbral100) {
+    // Puede renovar — completó el 100%
+    return { estado: 'puede', nivel: 100, tieneAtraso, fechaUmbral85, fechaUmbral100 };
+  } else if (pagadas >= umbral85) {
+    // Se le puede ofrecer — llegó al 85%
+    return { estado: 'ofrecer', nivel: 85, tieneAtraso, fechaUmbral85, fechaUmbral100 };
+  } else {
+    // Todavía no — mostrar cuándo llegaría
+    return { estado: 'no', nivel: Math.round(pagadas / totalCuotas * 100), tieneAtraso, fechaUmbral85, fechaUmbral100 };
+  }
 };
 
 const cuandoPuedeRenovar = (planId) => {
@@ -1353,7 +1381,7 @@ window.APP = {
   isHabil, nextHabil, addDays, diffDays,
   generarCuotas, imputarPago, aplicarImputacion,
   calcularRenovacion, confirmarRenovacion,
-  getClienteResumen, puedeRenovar, cuandoPuedeRenovar,
+  getClienteResumen, puedeRenovar, estadoRenovacion, cuandoPuedeRenovar,
   calcularSaldoTeorico, calcularSaldoTeoricoFecha, getDashboardData,
   USERS
 };
@@ -1501,6 +1529,7 @@ var nextHabil = APP.nextHabil; var addDays = APP.addDays; var generarCuotas = AP
 var imputarPago = APP.imputarPago; var aplicarImputacion = APP.aplicarImputacion;
 var calcularRenovacion = APP.calcularRenovacion; var confirmarRenovacion = APP.confirmarRenovacion;
 var getClienteResumen = APP.getClienteResumen; var puedeRenovar = APP.puedeRenovar;
+var estadoRenovacion = APP.estadoRenovacion;
 var cuandoPuedeRenovar = APP.cuandoPuedeRenovar; var calcularSaldoTeorico = APP.calcularSaldoTeorico;
 var calcularSaldoTeoricoFecha = APP.calcularSaldoTeoricoFecha;
 var getDashboardData = APP.getDashboardData; var USERS = APP.USERS;
@@ -1752,16 +1781,32 @@ const showHome = () => {
     html += `<div class="section-title" style="color:var(--accent)">✅ Cobrados hoy (${cobradosHoy.length})</div>`;
     cobradosHoy.forEach(({ cl, totalCobradoHoy, r }) => {
       const iniciales = cl.nombre.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+      const hoy = today();
+      // Determinar color según estado
+      const cuotasPendientes = state.cuotas.filter(c => c.clienteId === cl.id && (c.estado === 'pendiente' || c.estado === 'parcial'));
+      const tieneDeuda = cuotasPendientes.some(c => c.fecha <= hoy);
+      const tieneAdelanto = cuotasPendientes.some(c => c.fecha > hoy);
+      const alDia = !tieneDeuda;
+
+      let color, badge, borderColor;
+      if (tieneDeuda) {
+        color = 'var(--warn)'; borderColor = 'rgba(255,170,0,0.4)'; badge = '🟠 Con deuda';
+      } else if (tieneAdelanto) {
+        color = '#4fc3f7'; borderColor = 'rgba(79,195,247,0.4)'; badge = '🔵 Adelantado';
+      } else {
+        color = 'var(--accent)'; borderColor = 'rgba(0,212,170,0.3)'; badge = '🟢 Al día';
+      }
+
       html += `
-        <div class="cliente-item" style="opacity:0.7;border-color:rgba(0,212,170,0.3)" onclick="navigate(() => showCliente('${cl.id}'))">
-          <div class="cliente-avatar" style="background:linear-gradient(135deg,var(--accent),#00b894)">✓</div>
+        <div class="cliente-item" style="opacity:0.85;border-color:${borderColor}" onclick="navigate(() => showCliente('${cl.id}'))">
+          <div class="cliente-avatar" style="background:linear-gradient(135deg,${color},${color}99)">✓</div>
           <div class="cliente-info">
             <div class="cliente-nombre">${cl.nombre}</div>
-            <div class="cliente-sub" style="color:var(--accent)">Cobrado hoy</div>
+            <div class="cliente-sub" style="color:${color}">${badge}</div>
           </div>
           <div class="cliente-monto">
             <div class="cliente-monto-hoy">${formatMoney(totalCobradoHoy)}</div>
-            ${r.deudaHoy > 0 ? `<div class="cliente-deuda">Debe ${formatMoney(r.deudaHoy)}</div>` : ''}
+            ${tieneDeuda ? `<div class="cliente-deuda">Debe ${formatMoney(cuotasPendientes.filter(c=>c.fecha<=hoy).reduce((s,c)=>s+(c.saldoPendiente||c.monto),0))}</div>` : ''}
           </div>
         </div>
       `;
@@ -1997,9 +2042,8 @@ const showCliente = (clienteId) => {
 
   // Botones de acción
   html += `<div style="display:flex;flex-direction:column;gap:10px;margin-top:16px">`;
-  if (r.totalHoy > 0 || r.deudaHoy > 0) {
-    html += `<button class="btn btn-primary" onclick="showRegistrarCobro('${clienteId}')">💰 Registrar cobro</button>`;
-  }
+  // Siempre se puede registrar un cobro
+  html += `<button class="btn btn-primary" onclick="showRegistrarCobro('${clienteId}')">💰 Registrar cobro</button>`;
   html += `<button class="btn btn-accent2" onclick="showNuevoPlan('${clienteId}')">📋 Nuevo plan</button>`;
   if (r.planes.some(p => puedeRenovar(p.plan.id))) {
     html += `<button class="btn btn-warn" onclick="showRenovacion('${clienteId}')">🔄 Renovar crédito</button>`;
@@ -2839,88 +2883,92 @@ const showCalendarioRenovaciones = (cartera) => {
   const hoy = today();
   const planesActivos = state.planes.filter(p => p.estado === 'activo' && p.cartera === cartera);
 
-  // Calcular para cada plan
   const items = planesActivos.map(plan => {
     const cl = state.clientes.find(c => c.id === plan.clienteId);
-    const pagadas = state.cuotas.filter(c => c.planId === plan.id && c.estado === 'pagada').length;
-    const umbral85 = Math.ceil(plan.totalCuotas * 0.85);
-    const fechaDisp85 = cuandoPuedeRenovar(plan.id);
-    const yaDisponible = pagadas >= umbral85;
-    // Fecha de vencimiento total
-    const ultimaCuota = state.cuotas.filter(c => c.planId === plan.id).sort((a, b) => b.numero - a.numero)[0];
-    return { plan, cl, pagadas, umbral85, fechaDisp85, yaDisponible, ultimaCuota };
-  }).filter(i => i.cl && i.fechaDisp85);
+    const er = estadoRenovacion(plan.id);
+    if (!cl || !er) return null;
+    const vencidas = state.cuotas.filter(c => c.planId === plan.id && c.estado === 'pendiente' && c.fecha < hoy).length;
+    return { plan, cl, er, vencidas };
+  }).filter(Boolean);
 
   let html = `
     <div style="font-size:13px;color:var(--text2);margin-bottom:16px">
       Calendario de renovaciones · ${cartera === 'julieta' ? 'Cartera Julieta' : 'Cartera Jorge'}
     </div>
-  `;
-
-  // Tabs
-  html += `
     <div class="tabs">
-      <button class="tab active" id="tab-letocan" onclick="switchTabRen('letocan')">Les toca</button>
-      <button class="tab" id="tab-pueden" onclick="switchTabRen('pueden')">Pueden renovar</button>
+      <button class="tab active" id="tab-letocan" onclick="switchTabRen('letocan')">📋 Se les ofrece</button>
+      <button class="tab" id="tab-pueden" onclick="switchTabRen('pueden')">✅ Pueden renovar</button>
     </div>
   `;
 
-  // Tab Les toca (fecha exacta del 85%)
+  // Tab "Se les ofrece" — llegaron al 85%
   html += `<div id="tab-content-letocan">`;
-  const leTocan = items.filter(i => !i.yaDisponible);
+  const seOfrece = items.filter(i => i.er.estado === 'ofrecer' || i.er.estado === 'no');
 
-  if (leTocan.length === 0) {
-    html += `<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">Sin renovaciones programadas</div></div>`;
+  if (seOfrece.length === 0) {
+    html += `<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">Sin renovaciones próximas</div></div>`;
   } else {
-    // Agrupar por semana
-    const semanas = {};
-    leTocan.forEach(item => {
-      const fecha = item.fechaDisp85;
-      if (!semanas[fecha]) semanas[fecha] = [];
-      semanas[fecha].push(item);
-    });
+    // Primero los que ya llegaron al 85% (con o sin atraso)
+    const yaEn85 = seOfrece.filter(i => i.er.estado === 'ofrecer');
+    const noEn85 = seOfrece.filter(i => i.er.estado === 'no').sort((a, b) => a.er.fechaUmbral85?.localeCompare(b.er.fechaUmbral85));
 
-    Object.keys(semanas).sort().forEach(fecha => {
-      const esHoy = fecha === hoy;
-      html += `
-        <div class="section-title" style="color:${esHoy ? 'var(--accent)' : 'var(--text3)'}">
-          ${esHoy ? '📍 HOY' : formatDate(fecha)}
-        </div>
-      `;
-      semanas[fecha].forEach(item => {
+    if (yaEn85.length > 0) {
+      html += `<div class="section-title" style="color:var(--accent)">Disponibles ahora</div>`;
+      yaEn85.forEach(({ plan, cl, er, vencidas }) => {
+        const tieneAtraso = vencidas > 0;
         html += `
-          <div class="cliente-item" onclick="navigate(() => showCliente('${item.cl.id}'))">
-            <div class="cliente-avatar">${item.cl.nombre.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}</div>
+          <div class="cliente-item" style="border-color:${tieneAtraso ? 'rgba(255,77,109,0.4)' : 'rgba(124,106,247,0.4)'}" onclick="navigate(() => showCliente('${cl.id}'))">
+            <div class="cliente-avatar" style="background:linear-gradient(135deg,${tieneAtraso ? 'var(--danger)' : 'var(--accent2)'},${tieneAtraso ? '#c0392b' : '#5a42d4'})">${cl.nombre.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}</div>
             <div class="cliente-info">
-              <div class="cliente-nombre">${item.cl.nombre}</div>
-              <div class="cliente-sub">Capital ${formatMoney(item.plan.capital)} · Cuota ${item.pagadas}/${item.plan.totalCuotas}</div>
+              <div class="cliente-nombre">${cl.nombre}</div>
+              <div class="cliente-sub">Capital ${formatMoney(plan.capital)} · ${er.nivel}% pagado</div>
+              ${tieneAtraso ? `<div class="cliente-sub" style="color:var(--danger)">⚠️ ${vencidas} cuota${vencidas>1?'s':''} vencida${vencidas>1?'s':''}</div>` : ''}
             </div>
-            <span class="badge ${esHoy ? 'badge-green' : 'badge-warn'}">
-              ${esHoy ? 'Le toca hoy' : 'Le toca ' + formatDate(fecha)}
-            </span>
+            <span class="badge ${tieneAtraso ? 'badge-red' : 'badge-purple'}">${tieneAtraso ? 'Con atraso' : 'Ofrecer'}</span>
           </div>
         `;
       });
-    });
+    }
+
+    if (noEn85.length > 0) {
+      html += `<div class="section-title" style="color:var(--text3)">Próximas</div>`;
+      noEn85.forEach(({ plan, cl, er, vencidas }) => {
+        const tieneAtraso = vencidas > 0;
+        const fechaMostrar = er.fechaUmbral85 ? formatDate(er.fechaUmbral85) : '—';
+        html += `
+          <div class="cliente-item" onclick="navigate(() => showCliente('${cl.id}'))">
+            <div class="cliente-avatar">${cl.nombre.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}</div>
+            <div class="cliente-info">
+              <div class="cliente-nombre">${cl.nombre}</div>
+              <div class="cliente-sub">Capital ${formatMoney(plan.capital)} · ${er.nivel}% pagado</div>
+              ${tieneAtraso ? `<div class="cliente-sub" style="color:var(--danger)">⚠️ ${vencidas} vencida${vencidas>1?'s':''}</div>` : ''}
+            </div>
+            <span class="badge badge-warn">${fechaMostrar}</span>
+          </div>
+        `;
+      });
+    }
   }
   html += `</div>`;
 
-  // Tab Pueden renovar (ya superaron 85% pero no renovaron)
+  // Tab "Pueden renovar" — llegaron al 100%
   html += `<div id="tab-content-pueden" style="display:none">`;
-  const pueden = items.filter(i => i.yaDisponible);
+  const pueden = items.filter(i => i.er.estado === 'puede');
 
   if (pueden.length === 0) {
     html += `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">Nadie pendiente de renovar</div></div>`;
   } else {
-    pueden.forEach(item => {
+    pueden.forEach(({ plan, cl, er, vencidas }) => {
+      const tieneAtraso = vencidas > 0;
       html += `
-        <div class="cliente-item" onclick="navigate(() => showCliente('${item.cl.id}'))">
-          <div class="cliente-avatar">${item.cl.nombre.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}</div>
+        <div class="cliente-item" style="border-color:${tieneAtraso ? 'rgba(255,77,109,0.4)' : 'rgba(0,212,170,0.4)'}" onclick="navigate(() => showCliente('${cl.id}'))">
+          <div class="cliente-avatar" style="background:linear-gradient(135deg,${tieneAtraso ? 'var(--danger)' : 'var(--accent)'},${tieneAtraso ? '#c0392b' : '#00b894'})">${cl.nombre.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}</div>
           <div class="cliente-info">
-            <div class="cliente-nombre">${item.cl.nombre}</div>
-            <div class="cliente-sub">Capital ${formatMoney(item.plan.capital)} · Disponible desde ${formatDate(item.fechaDisp85)}</div>
+            <div class="cliente-nombre">${cl.nombre}</div>
+            <div class="cliente-sub">Capital ${formatMoney(plan.capital)} · Completó el 100%</div>
+            ${tieneAtraso ? `<div class="cliente-sub" style="color:var(--danger)">⚠️ ${vencidas} cuota${vencidas>1?'s':''} vencida${vencidas>1?'s':''}</div>` : ''}
           </div>
-          <span class="badge badge-purple">Puede renovar</span>
+          <span class="badge ${tieneAtraso ? 'badge-red' : 'badge-green'}">${tieneAtraso ? 'Con atraso' : 'Renovar'}</span>
         </div>
       `;
     });
