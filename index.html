@@ -2506,6 +2506,12 @@ const showNuevoPlan = (clienteId) => {
         <option value="quincenal">Quincenal (cada 2 lunes)</option>
       </select>
     </div>
+    ${(currentUser.role === 'admin' || currentUser.cartera === 'jorge') ? `
+    <div class="input-group">
+      <label class="input-label">Fecha de inicio</label>
+      <input type="date" id="plan-fecha-inicio" value="${today()}">
+    </div>
+    ` : ''}
     <div class="input-group">
       <label class="input-label">Observación (opcional)</label>
       <textarea id="plan-obs" placeholder="Ej: Paga después de las 10am..."></textarea>
@@ -2589,7 +2595,8 @@ const confirmarNuevoPlan = (clienteId) => {
   if (!capital || !cuota || !ncuotas) { toast('Ingresá capital, cuota y cantidad de cuotas', 'error'); return; }
 
   const cl = state.clientes.find(c => c.id === clienteId);
-  const inicio = nextHabil(today(), frecuencia);
+  const fechaInput = document.getElementById('plan-fecha-inicio')?.value;
+  const inicio = fechaInput || nextHabil(today(), frecuencia);
   const totalCuotas = ncuotas;
   const tasa = (((cuota * totalCuotas) - capital) / capital * 100).toFixed(2);
 
