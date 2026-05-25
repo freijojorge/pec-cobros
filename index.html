@@ -4035,6 +4035,12 @@ if (savedSession) {
       if (state.clientes.length === 0) seedDemoData();
       initNav();
       showHome();
+      // Iniciar Firebase sync
+      setTimeout(() => {
+        if (window.initFirebaseSync) {
+          window.initFirebaseSync().then(() => showHome());
+        }
+      }, 300);
     } else {
       localStorage.removeItem('prestamos_session');
     }
