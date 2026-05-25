@@ -1479,7 +1479,9 @@ const syncToFirebase = () => {
       localStorage.setItem('_lastSyncTime', String(lastSyncTime));
       const dataToSync = Object.assign({}, window.APP.state, { lastUpdate: lastSyncTime });
       delete dataToSync.user;
-      await firedb.collection('pec_cobros').doc('data').set(dataToSync);
+      // Eliminar campos undefined que Firebase rechaza
+      const cleanData = JSON.parse(JSON.stringify(dataToSync));
+      await firedb.collection('pec_cobros').doc('data').set(cleanData);
       console.log('Firebase: sync OK', new Date().toLocaleTimeString());
     } catch (err) {
       console.error('Error sincronizando:', err);
