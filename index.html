@@ -3395,6 +3395,43 @@ const renderDashContent = () => {
       </div>
     </div>
 
+    ${window._dashPeriodo === 'dia' ? (() => {
+      const carteras = window._dashCartera === 'total' ? ['julieta', 'jorge'] : [window._dashCartera];
+      let sHtml = `<div class="section-title">Existencia en mano</div><div class="card">`;
+      carteras.forEach(c => {
+        const s = calcularSaldoTeorico(c);
+        sHtml += `
+          ${carteras.length > 1 ? `<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-top:${c==='julieta'?'0':'12px'};margin-bottom:6px">${c === 'julieta' ? 'Julieta' : 'Jorge'}</div>` : ''}
+          <div class="resumen-row">
+            <span class="resumen-label">💵 Efectivo</span>
+            <span class="resumen-value accent">${formatMoney(s.saldoEfectivo)}</span>
+          </div>
+          <div class="resumen-row">
+            <span class="resumen-label">🏦 Transferencia</span>
+            <span class="resumen-value accent">${formatMoney(s.saldoTransferencia)}</span>
+          </div>
+        `;
+      });
+      if (window._dashCartera === 'total') {
+        const sJ = calcularSaldoTeorico('julieta');
+        const sJo = calcularSaldoTeorico('jorge');
+        sHtml += `
+          <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
+            <div class="resumen-row">
+              <span class="resumen-label" style="font-weight:600">💵 Total efectivo</span>
+              <span class="resumen-value accent" style="font-weight:700">${formatMoney(sJ.saldoEfectivo + sJo.saldoEfectivo)}</span>
+            </div>
+            <div class="resumen-row">
+              <span class="resumen-label" style="font-weight:600">🏦 Total transferencia</span>
+              <span class="resumen-value accent" style="font-weight:700">${formatMoney(sJ.saldoTransferencia + sJo.saldoTransferencia)}</span>
+            </div>
+          </div>
+        `;
+      }
+      sHtml += `</div>`;
+      return sHtml;
+    })() : ''}
+
     <div class="section-title">Ganancia del período</div>
     <div class="card">
       <div class="resumen-row"><span class="resumen-label">Ganancia bruta generada</span><span class="resumen-value accent">${formatMoney(d.totalGanancia + d.totalIntereses)}</span></div>
