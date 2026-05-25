@@ -1381,7 +1381,7 @@ window.APP = {
 let db = null;
 let unsubscribe = null;
 let syncEnabled = false;
-let lastSyncTime = 0;
+let lastSyncTime = parseInt(localStorage.getItem('_lastSyncTime') || '0');
 
 const loadScript = (src) => new Promise((resolve, reject) => {
   const s = document.createElement('script');
@@ -1407,26 +1407,32 @@ const initFirebase = async () => {
     const snap = await docRef.get();
     const remoteData = snap.exists ? snap.data() : null;
     const tieneClientes = remoteData && remoteData.clientes && remoteData.clientes.length > 0;
-    const versionOk = remoteData && (remoteData._seedVersion || 0) >= 3;
+    const versionOk = remoteData && (remoteData._seedVersion || 0) >= 7;
 
     if (tieneClientes && versionOk) {
-      const localData = JSON.parse(localStorage.getItem('prestamos_data') || '{}');
-      const cierresIniciales = (localData.cierres || []).filter(c => c.esSaldoInicial || (c.id && c.id.includes('inicial')));
-      Object.assign(window.APP.state, remoteData);
-      cierresIniciales.forEach(ci => {
-        const exists = window.APP.state.cierres.some(c => c.id === ci.id);
-        if (!exists) window.APP.state.cierres.push(ci);
-      });
-      localStorage.setItem('prestamos_data', JSON.stringify(window.APP.state));
-      console.log('Datos cargados desde Firebase:', remoteData.clientes.length, 'clientes');
-      // Refrescar pantalla con datos de Firebase
-      setTimeout(() => { if (window.showHome) window.showHome(); }, 100);
+      const remoteTime = remoteData.lastUpdate || 0;
+      // Solo cargar de Firebase si es más nuevo que mi último sync
+      if (remoteTime > lastSyncTime) {
+        const localData = JSON.parse(localStorage.getItem('prestamos_data') || '{}');
+        const cierresIniciales = (localData.cierres || []).filter(c => c.esSaldoInicial || (c.id && c.id.includes('inicial')));
+        Object.assign(window.APP.state, remoteData);
+        cierresIniciales.forEach(ci => {
+          const exists = window.APP.state.cierres.some(c => c.id === ci.id);
+          if (!exists) window.APP.state.cierres.push(ci);
+        });
+        localStorage.setItem('prestamos_data', JSON.stringify(window.APP.state));
+        console.log('Firebase: datos cargados', remoteData.clientes.length, 'clientes');
+        setTimeout(() => { if (window.showHome) window.showHome(); }, 100);
+      } else {
+        console.log('Firebase: datos locales más nuevos, manteniendo localStorage');
+      }
     } else {
-      console.log('Firebase sin datos — usando seed...');
+      console.log('Firebase sin datos — subiendo seed...');
       if (typeof SEED_DATA !== 'undefined' && SEED_DATA.clientes && SEED_DATA.clientes.length > 0) {
         Object.assign(window.APP.state, SEED_DATA);
         localStorage.setItem('prestamos_data', JSON.stringify(SEED_DATA));
         lastSyncTime = Date.now();
+        localStorage.setItem('_lastSyncTime', String(lastSyncTime));
         const dataToSync = Object.assign({}, window.APP.state, { lastUpdate: lastSyncTime });
         delete dataToSync.user;
         await docRef.set(dataToSync);
@@ -1434,12 +1440,14 @@ const initFirebase = async () => {
       }
     }
 
+    // Listener tiempo real
     unsubscribe = docRef.onSnapshot((snapshot) => {
       if (!snapshot.exists) return;
       const data = snapshot.data();
       if (!data) return;
-      // Solo ignorar si el update es exactamente el mío
-      if (data.lastUpdate && data.lastUpdate === lastSyncTime) return;
+      const remoteTime = data.lastUpdate || 0;
+      // Ignorar si es mi propio update o si es más viejo que mi última sincronización
+      if (remoteTime <= lastSyncTime) return;
       const cierresIniciales = (window.APP.state.cierres || []).filter(c => c.esSaldoInicial || (c.id && c.id.includes('inicial')));
       Object.assign(window.APP.state, data);
       cierresIniciales.forEach(ci => {
@@ -1447,10 +1455,9 @@ const initFirebase = async () => {
         if (!exists) window.APP.state.cierres.push(ci);
       });
       localStorage.setItem('prestamos_data', JSON.stringify(window.APP.state));
-      // Refrescar pantalla actual siempre
-      setTimeout(() => {
-        if (window.showHome) window.showHome();
-      }, 100);
+      lastSyncTime = remoteTime;
+      localStorage.setItem('_lastSyncTime', String(lastSyncTime));
+      setTimeout(() => { if (window.showHome) window.showHome(); }, 100);
       console.log('Firebase: actualización recibida', new Date().toLocaleTimeString());
     });
 
@@ -1467,8 +1474,9 @@ const syncToFirebase = () => {
   clearTimeout(syncTimeout);
   syncTimeout = setTimeout(async () => {
     try {
-      const firedb = (db) ? db : firebase.firestore();
+      const firedb = db ? db : firebase.firestore();
       lastSyncTime = Date.now();
+      localStorage.setItem('_lastSyncTime', String(lastSyncTime));
       const dataToSync = Object.assign({}, window.APP.state, { lastUpdate: lastSyncTime });
       delete dataToSync.user;
       await firedb.collection('pec_cobros').doc('data').set(dataToSync);
