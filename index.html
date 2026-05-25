@@ -1152,13 +1152,14 @@ const getClienteResumen = (clienteId) => {
   const resumenPlanes = [];
 
   planes.forEach(plan => {
-    const cuotasActivas = state.cuotas.filter(c => c.planId === plan.id && c.estado === 'pendiente');
+    const cuotasActivas = state.cuotas.filter(c => c.planId === plan.id && (c.estado === 'pendiente' || c.estado === 'parcial'));
     const cuotaHoy = cuotasActivas.find(c => c.fecha === hoy);
     const cuotasVencidas = cuotasActivas.filter(c => c.fecha < hoy);
     const cuotasPagadas = state.cuotas.filter(c => c.planId === plan.id && c.estado === 'pagada').length;
 
-    if (cuotaHoy) totalHoy += cuotaHoy.monto;
-    const deudaPlan = cuotasVencidas.reduce((s, c) => s + c.monto, 0);
+    if (cuotaHoy) totalHoy += cuotaHoy.saldoPendiente !== undefined ? cuotaHoy.saldoPendiente : cuotaHoy.monto;
+    // Incluir cuotas parciales en la deuda
+    const deudaPlan = cuotasVencidas.reduce((s, c) => s + (c.saldoPendiente !== undefined ? c.saldoPendiente : c.monto), 0);
     deudaHoy += deudaPlan;
 
     const cuotaActualNum = cuotasPagadas + 1;
@@ -1673,20 +1674,41 @@ const showHome = () => {
     const planesActivos = state.planes.filter(p => p.clienteId === cl.id && p.estado === 'activo');
     const r = getClienteResumen(cl.id);
 
-    // ¿Tiene cuota hoy?
-    const tieneCuotaHoy = planesActivos.some(p =>
-      state.cuotas.some(c => c.planId === p.id && c.fecha === hoy && c.estado === 'pendiente')
-    );
-
-    // ¿Ya cobró hoy? (tiene cobros registrados hoy)
-    const cobroHoy = state.cobros.filter(c => c.clienteId === cl.id && c.fecha === hoy);
+    const cobroHoy = state.cobros.filter(c => c.clienteId === cl.id && c.fecha === hoy && !c.esVirtual);
     const yaCobroHoy = cobroHoy.length > 0;
-    const totalCobradoHoy = cobroHoy.reduce((s, c) => s + c.montoPagado + c.interesMora, 0);
+    const totalCobradoHoy = cobroHoy.reduce((s, c) => s + c.montoPagado + (c.interesMora||0), 0);
 
-    // ¿Tiene deuda?
-    const tieneDeuda = r.deudaHoy > 0;
+    // Calcular estado real de cuotas
+    const cuotasVencidas = state.cuotas.filter(c =>
+      c.clienteId === cl.id && (c.estado === 'pendiente' || c.estado === 'parcial') && c.fecha < hoy
+    );
+    const cuotasHoy = state.cuotas.filter(c =>
+      c.clienteId === cl.id && (c.estado === 'pendiente' || c.estado === 'parcial') && c.fecha === hoy
+    );
+    const cuotasFuturas = state.cuotas.filter(c =>
+      c.clienteId === cl.id && (c.estado === 'pendiente' || c.estado === 'parcial') && c.fecha > hoy
+    );
+    const tieneVencidas = cuotasVencidas.length > 0;
+    const tieneHoy = cuotasHoy.length > 0;
+    const tieneFuturas = cuotasFuturas.length > 0;
+    const tieneCuotaHoy = tieneHoy;
+    const tieneDeuda = tieneVencidas;
 
-    return { cl, r, planesActivos, tieneCuotaHoy, yaCobroHoy, totalCobradoHoy, tieneDeuda };
+    // Color según estado
+    let color, borderColor, badge;
+    if (tieneVencidas) {
+      color = 'var(--danger)'; borderColor = 'rgba(255,77,109,0.4)'; badge = '🔴 Vencida';
+    } else if (tieneHoy) {
+      color = 'var(--warn)'; borderColor = 'rgba(255,170,0,0.4)'; badge = '🟠 Hoy';
+    } else if (!yaCobroHoy && tieneFuturas) {
+      color = 'var(--text2)'; borderColor = 'var(--border)'; badge = '';
+    } else if (yaCobroHoy && !tieneVencidas && !tieneHoy && tieneFuturas) {
+      color = '#4fc3f7'; borderColor = 'rgba(79,195,247,0.4)'; badge = '🔵 Adelantado';
+    } else {
+      color = 'var(--accent)'; borderColor = 'rgba(0,212,170,0.3)'; badge = '🟢 Al día';
+    }
+
+    return { cl, r, planesActivos, tieneCuotaHoy, yaCobroHoy, totalCobradoHoy, tieneDeuda, tieneVencidas, tieneHoy, tieneFuturas, color, borderColor, badge };
   });
 
   // Separar grupos — cobrado siempre va abajo aunque tenga deuda restante
@@ -1758,18 +1780,18 @@ const showHome = () => {
   if (pendientesHoy.length === 0) {
     html += `<div class="empty-state" style="padding:24px"><div class="empty-icon">✅</div><div class="empty-text">Todos cobrados</div></div>`;
   } else {
-    pendientesHoy.forEach(({ cl, r }) => {
+    pendientesHoy.forEach(({ cl, r, color, borderColor, tieneVencidas, tieneHoy }) => {
       const iniciales = cl.nombre.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
       html += `
-        <div class="cliente-item" onclick="navigate(() => showCliente('${cl.id}'))">
-          <div class="cliente-avatar">${iniciales}</div>
+        <div class="cliente-item" style="border-color:${borderColor}" onclick="navigate(() => showCliente('${cl.id}'))">
+          <div class="cliente-avatar" style="background:linear-gradient(135deg,${color},${color}99)">${iniciales}</div>
           <div class="cliente-info">
             <div class="cliente-nombre">${cl.nombre}</div>
-            <div class="cliente-sub">${r.planes.length} plan${r.planes.length !== 1 ? 'es' : ''} activos</div>
+            <div class="cliente-sub" style="color:${color}">${tieneVencidas ? '🔴 Cuota vencida' : tieneHoy ? '🟠 Cuota hoy' : 'Sin cuota hoy'}</div>
           </div>
           <div class="cliente-monto">
-            <div class="cliente-monto-hoy">${formatMoney(r.totalHoy)}</div>
-            ${r.deudaHoy > 0 ? `<div class="cliente-deuda">Debe ${formatMoney(r.deudaHoy)}</div>` : ''}
+            ${r.totalHoy > 0 ? `<div class="cliente-monto-hoy">${formatMoney(r.totalHoy)}</div>` : ''}
+            ${r.deudaHoy > 0 ? `<div class="cliente-deuda" style="color:var(--danger)">Debe ${formatMoney(r.deudaHoy)}</div>` : ''}
           </div>
         </div>
       `;
@@ -1779,24 +1801,8 @@ const showHome = () => {
   // YA COBRADOS HOY
   if (cobradosHoy.length > 0) {
     html += `<div class="section-title" style="color:var(--accent)">✅ Cobrados hoy (${cobradosHoy.length})</div>`;
-    cobradosHoy.forEach(({ cl, totalCobradoHoy, r }) => {
+    cobradosHoy.forEach(({ cl, totalCobradoHoy, r, color, borderColor, badge, tieneVencidas, tieneHoy, tieneFuturas }) => {
       const iniciales = cl.nombre.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-      const hoy = today();
-      // Determinar color según estado
-      const cuotasPendientes = state.cuotas.filter(c => c.clienteId === cl.id && (c.estado === 'pendiente' || c.estado === 'parcial'));
-      const tieneDeuda = cuotasPendientes.some(c => c.fecha <= hoy);
-      const tieneAdelanto = cuotasPendientes.some(c => c.fecha > hoy);
-      const alDia = !tieneDeuda;
-
-      let color, badge, borderColor;
-      if (tieneDeuda) {
-        color = 'var(--warn)'; borderColor = 'rgba(255,170,0,0.4)'; badge = '🟠 Con deuda';
-      } else if (tieneAdelanto) {
-        color = '#4fc3f7'; borderColor = 'rgba(79,195,247,0.4)'; badge = '🔵 Adelantado';
-      } else {
-        color = 'var(--accent)'; borderColor = 'rgba(0,212,170,0.3)'; badge = '🟢 Al día';
-      }
-
       html += `
         <div class="cliente-item" style="opacity:0.85;border-color:${borderColor}" onclick="navigate(() => showCliente('${cl.id}'))">
           <div class="cliente-avatar" style="background:linear-gradient(135deg,${color},${color}99)">✓</div>
@@ -1806,7 +1812,7 @@ const showHome = () => {
           </div>
           <div class="cliente-monto">
             <div class="cliente-monto-hoy">${formatMoney(totalCobradoHoy)}</div>
-            ${tieneDeuda ? `<div class="cliente-deuda">Debe ${formatMoney(cuotasPendientes.filter(c=>c.fecha<=hoy).reduce((s,c)=>s+(c.saldoPendiente||c.monto),0))}</div>` : ''}
+            ${r.deudaHoy > 0 ? `<div class="cliente-deuda" style="color:var(--danger)">Debe ${formatMoney(r.deudaHoy)}</div>` : ''}
           </div>
         </div>
       `;
@@ -2921,7 +2927,7 @@ const showCalendarioRenovaciones = (cartera) => {
             <div class="cliente-avatar" style="background:linear-gradient(135deg,${tieneAtraso ? 'var(--danger)' : 'var(--accent2)'},${tieneAtraso ? '#c0392b' : '#5a42d4'})">${cl.nombre.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}</div>
             <div class="cliente-info">
               <div class="cliente-nombre">${cl.nombre}</div>
-              <div class="cliente-sub">Capital ${formatMoney(plan.capital)} · ${er.nivel}% pagado</div>
+              <div class="cliente-sub">Capital ${formatMoney(plan.capital)}</div>
               ${tieneAtraso ? `<div class="cliente-sub" style="color:var(--danger)">⚠️ ${vencidas} cuota${vencidas>1?'s':''} vencida${vencidas>1?'s':''}</div>` : ''}
             </div>
             <span class="badge ${tieneAtraso ? 'badge-red' : 'badge-purple'}">${tieneAtraso ? 'Con atraso' : 'Ofrecer'}</span>
@@ -2940,7 +2946,7 @@ const showCalendarioRenovaciones = (cartera) => {
             <div class="cliente-avatar">${cl.nombre.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}</div>
             <div class="cliente-info">
               <div class="cliente-nombre">${cl.nombre}</div>
-              <div class="cliente-sub">Capital ${formatMoney(plan.capital)} · ${er.nivel}% pagado</div>
+              <div class="cliente-sub">Capital ${formatMoney(plan.capital)}</div>
               ${tieneAtraso ? `<div class="cliente-sub" style="color:var(--danger)">⚠️ ${vencidas} vencida${vencidas>1?'s':''}</div>` : ''}
             </div>
             <span class="badge badge-warn">${fechaMostrar}</span>
@@ -2960,12 +2966,13 @@ const showCalendarioRenovaciones = (cartera) => {
   } else {
     pueden.forEach(({ plan, cl, er, vencidas }) => {
       const tieneAtraso = vencidas > 0;
+      const fechaUmbral100 = er.fechaUmbral100 ? formatDate(er.fechaUmbral100) : '—';
       html += `
         <div class="cliente-item" style="border-color:${tieneAtraso ? 'rgba(255,77,109,0.4)' : 'rgba(0,212,170,0.4)'}" onclick="navigate(() => showCliente('${cl.id}'))">
           <div class="cliente-avatar" style="background:linear-gradient(135deg,${tieneAtraso ? 'var(--danger)' : 'var(--accent)'},${tieneAtraso ? '#c0392b' : '#00b894'})">${cl.nombre.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}</div>
           <div class="cliente-info">
             <div class="cliente-nombre">${cl.nombre}</div>
-            <div class="cliente-sub">Capital ${formatMoney(plan.capital)} · Completó el 100%</div>
+            <div class="cliente-sub">Capital ${formatMoney(plan.capital)} · Última cuota: ${fechaUmbral100}</div>
             ${tieneAtraso ? `<div class="cliente-sub" style="color:var(--danger)">⚠️ ${vencidas} cuota${vencidas>1?'s':''} vencida${vencidas>1?'s':''}</div>` : ''}
           </div>
           <span class="badge ${tieneAtraso ? 'badge-red' : 'badge-green'}">${tieneAtraso ? 'Con atraso' : 'Renovar'}</span>
@@ -3872,7 +3879,9 @@ const eliminarCobro = (cobroId, clienteId) => {
   state.cobros = state.cobros.filter(c => c.id !== cobroId);
   save();
   toast('Cobro eliminado ✓');
-  navigate(() => showCliente(clienteId));
+  // Recargar pantalla del cliente
+  navStack = navStack.filter((_, i) => i === 0);
+  showCliente(clienteId);
 };
 
 // ===== HISTORIAL DE PAGOS POR CLIENTE (solo admin) =====
