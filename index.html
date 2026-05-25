@@ -787,12 +787,27 @@ const isHabil = (date, frecuencia) => {
   const day = d.getDay(); // 0=dom, 1=lun, ..., 6=sab
   if (frecuencia === 'LV') return day >= 1 && day <= 5;
   if (frecuencia === 'LS') return day >= 1 && day <= 6;
+  if (frecuencia === 'semanal') return day === 1; // solo lunes
+  if (frecuencia === 'quincenal') return day === 1; // solo lunes (cada 2 semanas)
   return true;
   // Nota: no se consideran feriados, se cobra igual
 };
 
 const nextHabil = (fromDate, frecuencia) => {
   let d = new Date(fromDate + 'T12:00:00');
+  if (frecuencia === 'semanal') {
+    // Siguiente lunes
+    d.setDate(d.getDate() + 1);
+    while (d.getDay() !== 1) d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+  if (frecuencia === 'quincenal') {
+    // Lunes en 2 semanas
+    d.setDate(d.getDate() + 1);
+    while (d.getDay() !== 1) d.setDate(d.getDate() + 1);
+    d.setDate(d.getDate() + 7); // una semana más
+    return d.toISOString().slice(0, 10);
+  }
   d.setDate(d.getDate() + 1);
   while (!isHabil(d.toISOString().slice(0, 10), frecuencia)) {
     d.setDate(d.getDate() + 1);
@@ -1672,9 +1687,10 @@ const showHome = () => {
     const planesActivos = state.planes.filter(p => p.clienteId === cl.id && p.estado === 'activo');
     const r = getClienteResumen(cl.id);
 
-    const cobroHoy = state.cobros.filter(c => c.clienteId === cl.id && c.fecha === hoy && !c.esVirtual);
+    const cobroHoy = state.cobros.filter(c => c.clienteId === cl.id && c.fecha === hoy);
     const yaCobroHoy = cobroHoy.length > 0;
-    const totalCobradoHoy = cobroHoy.reduce((s, c) => s + c.montoPagado + (c.interesMora||0), 0);
+    const totalCobradoHoy = cobroHoy.filter(c => !c.esVirtual).reduce((s, c) => s + c.montoPagado + (c.interesMora||0), 0) +
+      cobroHoy.filter(c => c.esVirtual).reduce((s, c) => s + (c.montoPagado || 0), 0);
 
     // Calcular estado real de cuotas
     const cuotasVencidas = state.cuotas.filter(c =>
@@ -2011,7 +2027,7 @@ const showCliente = (clienteId) => {
             ${puedeRen ? `<span class="badge badge-green">Puede renovar</span>` : `<span class="badge" style="background:rgba(85,93,114,0.2);color:var(--text3)">En curso</span>`}
           </div>
           <div style="font-size:12px;color:var(--text2)">
-            Inicio: ${formatDate(plan.fechaInicio)} · ${plan.frecuencia === 'LV' ? 'Lun-Vie' : 'Lun-Sáb'}
+            Inicio: ${formatDate(plan.fechaInicio)} · ${plan.frecuencia === 'LV' ? 'Lun-Vie' : plan.frecuencia === 'LS' ? 'Lun-Sáb' : plan.frecuencia === 'semanal' ? 'Semanal' : plan.frecuencia === 'quincenal' ? 'Quincenal' : plan.frecuencia}
           </div>
           ${currentUser.role === 'admin' ? `<div style="font-size:12px;color:var(--accent2);margin-top:2px">Tasa: ${plan.tasaAplicada}%</div>` : ''}
           <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
@@ -2483,8 +2499,10 @@ const showNuevoPlan = (clienteId) => {
     <div class="input-group" style="margin-top:12px">
       <label class="input-label">Frecuencia de cobro</label>
       <select id="plan-frecuencia" onchange="recalcularPlan('capital')">
-        <option value="LV">Lunes a Viernes</option>
-        <option value="LS">Lunes a Sábado</option>
+        <option value="LV">Lunes a Viernes (diario)</option>
+        <option value="LS">Lunes a Sábado (diario)</option>
+        <option value="semanal">Semanal (cada lunes)</option>
+        <option value="quincenal">Quincenal (cada 2 lunes)</option>
       </select>
     </div>
     <div class="input-group">
@@ -2684,8 +2702,10 @@ const showRenovacionCalculo = (clienteId, planId) => {
     <div class="input-group">
       <label class="input-label">Frecuencia</label>
       <select id="ren-frecuencia" onchange="calcularPreviewRenovacion('${clienteId}', '${planId}')">
-        <option value="LV" ${plan.frecuencia === 'LV' ? 'selected' : ''}>Lunes a Viernes</option>
-        <option value="LS" ${plan.frecuencia === 'LS' ? 'selected' : ''}>Lunes a Sábado</option>
+        <option value="LV" ${plan.frecuencia === 'LV' ? 'selected' : ''}>Lunes a Viernes (diario)</option>
+        <option value="LS" ${plan.frecuencia === 'LS' ? 'selected' : ''}>Lunes a Sábado (diario)</option>
+        <option value="semanal" ${plan.frecuencia === 'semanal' ? 'selected' : ''}>Semanal (cada lunes)</option>
+        <option value="quincenal" ${plan.frecuencia === 'quincenal' ? 'selected' : ''}>Quincenal (cada 2 lunes)</option>
       </select>
     </div>
     <div id="ren-preview"></div>
@@ -3031,7 +3051,18 @@ const showGastos = (tabActivo = 'gastos', fechaSeleccionada = null) => {
     }
 
   } else if (tabActivo === 'midia') {
-    html += renderResumenDia(carteraPropia, hoy);
+    if (isAdmin) {
+      const carteras = ['julieta', 'jorge'];
+      const carteraSeleccionada = window._dashCarteraGastos || 'julieta';
+      html += `
+        <div class="tabs" style="margin-bottom:12px">
+          ${carteras.map(c => `<button class="tab ${carteraSeleccionada === c ? 'active' : ''}" onclick="window._dashCarteraGastos='${c}'; showGastos('midia')">${c === 'julieta' ? 'Julieta' : 'Jorge'}</button>`).join('')}
+        </div>
+      `;
+      html += renderResumenDia(carteraSeleccionada, hoy);
+    } else {
+      html += renderResumenDia(carteraPropia, hoy);
+    }
 
   } else {
     // ===== HISTORIAL =====
@@ -3851,16 +3882,34 @@ const eliminarCobro = (cobroId, clienteId) => {
   const cobro = state.cobros.find(c => c.id === cobroId);
   if (!cobro) return;
 
-  // Revertir cuotas al estado pendiente
+  // Revertir cuotas al estado correcto
   (cobro.imputacion || []).forEach(imp => {
     const cuota = state.cuotas.find(c => c.id === imp.cuotaId);
     if (cuota) {
-      cuota.estado = 'pendiente';
-      cuota.fechaPago = null;
-      cuota.cobradoEfectivo = 0;
-      cuota.cobradoTransferencia = 0;
-      cuota.saldoPendiente = undefined;
-      cuota.montoPagado = 0;
+      if (imp.parcial && imp.saldoAnterior !== undefined) {
+        // Era parcial antes — restaurar saldo anterior
+        cuota.estado = 'parcial';
+        cuota.saldoPendiente = imp.saldoAnterior;
+        cuota.cobradoEfectivo = (cuota.cobradoEfectivo || 0) - (imp.montoAplicado || 0);
+        cuota.cobradoTransferencia = (cuota.cobradoTransferencia || 0) - (imp.montoTransferenciaAplicado || 0);
+        cuota.fechaPago = null;
+      } else if (imp.eraVencida || imp.pagadaCompletamente) {
+        // Estaba pendiente — volver a pendiente
+        cuota.estado = 'pendiente';
+        cuota.fechaPago = null;
+        cuota.cobradoEfectivo = 0;
+        cuota.cobradoTransferencia = 0;
+        cuota.saldoPendiente = undefined;
+        cuota.montoPagado = 0;
+      } else {
+        // Por defecto volver a pendiente
+        cuota.estado = 'pendiente';
+        cuota.fechaPago = null;
+        cuota.cobradoEfectivo = 0;
+        cuota.cobradoTransferencia = 0;
+        cuota.saldoPendiente = undefined;
+        cuota.montoPagado = 0;
+      }
     }
   });
 
