@@ -1075,6 +1075,7 @@ const confirmarRenovacion = (planIdARenovar, clienteId, nuevoCapital, nuevaCuota
   const cobroVirtual = {
     id: uid(),
     clienteId,
+    cartera,
     fecha: hoy,
     montoPagado: calc.totalDescuento,
     montoEfectivo: 0,
@@ -3012,7 +3013,8 @@ const switchTabRen = (tab) => {
 
 // ===== GASTOS =====
 const showGastos = (tabActivo = 'gastos', fechaSeleccionada = null) => {
-  const cartera = currentUser.role === 'admin' ? null : currentUser.cartera;
+  const isAdmin = currentUser.role === 'admin';
+  const cartera = isAdmin ? null : currentUser.cartera;
   const carteraPropia = currentUser.cartera;
   const hoy = today();
   const fecha = fechaSeleccionada || hoy;
@@ -3886,23 +3888,29 @@ const eliminarCobro = (cobroId, clienteId) => {
   (cobro.imputacion || []).forEach(imp => {
     const cuota = state.cuotas.find(c => c.id === imp.cuotaId);
     if (cuota) {
-      if (imp.parcial && imp.saldoAnterior !== undefined) {
-        // Era parcial antes — restaurar saldo anterior
+      // saldoAnterior = cuánto debía la cuota ANTES de este cobro
+      // imp.parcial = true si este cobro no alcanzó a cubrirla completamente
+      const saldoAnterior = imp.saldoAnterior;
+      
+      if (imp.parcial) {
+        // Este cobro fue parcial: la cuota sigue parcial con el saldo que tenía antes
         cuota.estado = 'parcial';
-        cuota.saldoPendiente = imp.saldoAnterior;
-        cuota.cobradoEfectivo = (cuota.cobradoEfectivo || 0) - (imp.montoAplicado || 0);
-        cuota.cobradoTransferencia = (cuota.cobradoTransferencia || 0) - (imp.montoTransferenciaAplicado || 0);
+        cuota.saldoPendiente = saldoAnterior !== undefined ? saldoAnterior : cuota.monto;
         cuota.fechaPago = null;
-      } else if (imp.eraVencida || imp.pagadaCompletamente) {
-        // Estaba pendiente — volver a pendiente
-        cuota.estado = 'pendiente';
+        // Restar lo que se había cobrado en este pago
+        const montoAplicado = imp.montoImputado || imp.montoAplicado || 0;
+        cuota.cobradoEfectivo = Math.max(0, (cuota.cobradoEfectivo || 0) - montoAplicado);
+        cuota.montoPagado = Math.max(0, (cuota.montoPagado || 0) - montoAplicado);
+      } else if (saldoAnterior !== undefined && saldoAnterior < cuota.monto) {
+        // Este cobro completó una cuota que YA era parcial → volver a parcial
+        cuota.estado = 'parcial';
+        cuota.saldoPendiente = saldoAnterior;
         cuota.fechaPago = null;
-        cuota.cobradoEfectivo = 0;
-        cuota.cobradoTransferencia = 0;
-        cuota.saldoPendiente = undefined;
-        cuota.montoPagado = 0;
+        const montoAplicado = imp.montoImputado || saldoAnterior || 0;
+        cuota.cobradoEfectivo = Math.max(0, (cuota.cobradoEfectivo || 0) - montoAplicado);
+        cuota.montoPagado = Math.max(0, cuota.monto - saldoAnterior);
       } else {
-        // Por defecto volver a pendiente
+        // Cuota completa estaba pendiente → volver a pendiente
         cuota.estado = 'pendiente';
         cuota.fechaPago = null;
         cuota.cobradoEfectivo = 0;
