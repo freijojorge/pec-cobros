@@ -788,6 +788,7 @@ const isHabil = (date, frecuencia) => {
   if (frecuencia === 'LV') return day >= 1 && day <= 5;
   if (frecuencia === 'LS') return day >= 1 && day <= 6;
   return true;
+  // Nota: no se consideran feriados, se cobra igual
 };
 
 const nextHabil = (fromDate, frecuencia) => {
@@ -1167,6 +1168,9 @@ const getClienteResumen = (clienteId) => {
 const puedeRenovar = (planId) => {
   const plan = state.planes.find(p => p.id === planId);
   if (!plan || plan.estado !== 'activo') return false;
+  const hoy = today();
+  const vencidas = state.cuotas.filter(c => c.planId === planId && (c.estado === 'pendiente' || c.estado === 'parcial') && c.fecha < hoy).length;
+  if (vencidas > 0) return false;
   const pagadas = state.cuotas.filter(c => c.planId === planId && (c.estado === 'pagada' || c.estado === 'saldada_renovacion')).length;
   return pagadas >= Math.ceil(plan.totalCuotas * 0.85);
 };
