@@ -787,8 +787,8 @@ const isHabil = (date, frecuencia) => {
   const day = d.getDay(); // 0=dom, 1=lun, ..., 6=sab
   if (frecuencia === 'LV') return day >= 1 && day <= 5;
   if (frecuencia === 'LS') return day >= 1 && day <= 6;
-  if (frecuencia === 'semanal') return day === 1; // solo lunes
-  if (frecuencia === 'quincenal') return day === 1; // solo lunes (cada 2 semanas)
+  if (frecuencia === 'semanal') return true; // cualquier día, el intervalo lo maneja generarCuotas
+  if (frecuencia === 'quincenal') return true; // cualquier día, el intervalo lo maneja generarCuotas
   return true;
   // Nota: no se consideran feriados, se cobra igual
 };
@@ -796,16 +796,17 @@ const isHabil = (date, frecuencia) => {
 const nextHabil = (fromDate, frecuencia) => {
   let d = new Date(fromDate + 'T12:00:00');
   if (frecuencia === 'semanal') {
-    // Siguiente lunes
+    // El primer cobro es al día siguiente hábil (lunes a viernes), manteniendo ese día de semana
     d.setDate(d.getDate() + 1);
-    while (d.getDay() !== 1) d.setDate(d.getDate() + 1);
+    // Saltar fines de semana
+    while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
     return d.toISOString().slice(0, 10);
   }
   if (frecuencia === 'quincenal') {
-    // Lunes en 2 semanas
+    // El primer cobro es al día siguiente hábil, manteniendo ese día de semana
     d.setDate(d.getDate() + 1);
-    while (d.getDay() !== 1) d.setDate(d.getDate() + 1);
-    d.setDate(d.getDate() + 7); // una semana más
+    // Saltar fines de semana
+    while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
     return d.toISOString().slice(0, 10);
   }
   d.setDate(d.getDate() + 1);
@@ -842,10 +843,13 @@ const diffDays = (a, b) => {
 const generarCuotas = (plan) => {
   const cuotas = [];
   let fecha = plan.fechaInicio;
+  const intervalo = plan.frecuencia === 'semanal' ? 7 : plan.frecuencia === 'quincenal' ? 14 : null;
   for (let i = 1; i <= plan.totalCuotas; i++) {
-    // Buscar próximo día hábil desde fecha actual
-    while (!isHabil(fecha, plan.frecuencia)) {
-      fecha = addDays(fecha, 1);
+    // Para LV/LS buscar próximo día hábil; para semanal/quincenal la fecha ya es correcta
+    if (!intervalo) {
+      while (!isHabil(fecha, plan.frecuencia)) {
+        fecha = addDays(fecha, 1);
+      }
     }
     cuotas.push({
       id: uid(),
@@ -861,10 +865,14 @@ const generarCuotas = (plan) => {
       interesMora: 0,
       fechaPago: null
     });
-    fecha = addDays(fecha, 1);
-    // Avanzar al siguiente día hábil
-    while (!isHabil(fecha, plan.frecuencia)) {
+    if (intervalo) {
+      // Semanal: +7 dias; Quincenal: +14 dias (mismo dia de la semana)
+      fecha = addDays(fecha, intervalo);
+    } else {
       fecha = addDays(fecha, 1);
+      while (!isHabil(fecha, plan.frecuencia)) {
+        fecha = addDays(fecha, 1);
+      }
     }
   }
   return cuotas;
@@ -2502,8 +2510,8 @@ const showNuevoPlan = (clienteId) => {
       <select id="plan-frecuencia" onchange="recalcularPlan('capital')">
         <option value="LV">Lunes a Viernes (diario)</option>
         <option value="LS">Lunes a Sábado (diario)</option>
-        <option value="semanal">Semanal (cada lunes)</option>
-        <option value="quincenal">Quincenal (cada 2 lunes)</option>
+        <option value="semanal">Semanal (mismo día cada semana)</option>
+        <option value="quincenal">Quincenal (mismo día cada 2 semanas)</option>
       </select>
     </div>
     ${(currentUser.role === 'admin' || currentUser.cartera === 'jorge') ? `
@@ -2712,8 +2720,8 @@ const showRenovacionCalculo = (clienteId, planId) => {
       <select id="ren-frecuencia" onchange="calcularPreviewRenovacion('${clienteId}', '${planId}')">
         <option value="LV" ${plan.frecuencia === 'LV' ? 'selected' : ''}>Lunes a Viernes (diario)</option>
         <option value="LS" ${plan.frecuencia === 'LS' ? 'selected' : ''}>Lunes a Sábado (diario)</option>
-        <option value="semanal" ${plan.frecuencia === 'semanal' ? 'selected' : ''}>Semanal (cada lunes)</option>
-        <option value="quincenal" ${plan.frecuencia === 'quincenal' ? 'selected' : ''}>Quincenal (cada 2 lunes)</option>
+        <option value="semanal" ${plan.frecuencia === 'semanal' ? 'selected' : ''}>Semanal (mismo día cada semana)</option>
+        <option value="quincenal" ${plan.frecuencia === 'quincenal' ? 'selected' : ''}>Quincenal (mismo día cada 2 semanas)</option>
       </select>
     </div>
     <div id="ren-preview"></div>
