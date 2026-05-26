@@ -3436,11 +3436,14 @@ const eliminarCliente = (clienteId) => {
 const showDashboard = () => {
   let html = `
     <div class="tabs">
-      <button class="tab active" id="dtab-dia" onclick="switchDashTab('dia')">Hoy</button>
+      <button class="tab active" id="dtab-dia" onclick="switchDashTab('dia')">Día</button>
       <button class="tab" id="dtab-semana" onclick="switchDashTab('semana')">Semana</button>
       <button class="tab" id="dtab-mes" onclick="switchDashTab('mes')">Mes</button>
     </div>
-    <div class="tabs" style="margin-top:-8px">
+    <div id="dash-fecha-selector" style="padding:8px 16px 0">
+      <input type="date" id="dash-fecha-input" value="${today()}" onchange="window._dashFecha=this.value; renderDashContent()" style="width:100%;background:var(--bg3);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);font-size:14px;padding:10px 14px;outline:none">
+    </div>
+    <div class="tabs" style="margin-top:8px">
       <button class="tab active" id="ctab-julieta" onclick="switchCarteraTab('julieta')">Julieta</button>
       <button class="tab" id="ctab-jorge" onclick="switchCarteraTab('jorge')">Jorge</button>
       <button class="tab" id="ctab-total" onclick="switchCarteraTab('total')">Consolidado</button>
@@ -3450,12 +3453,16 @@ const showDashboard = () => {
   render(html, 'Dashboard');
   window._dashPeriodo = 'dia';
   window._dashCartera = 'julieta';
+  window._dashFecha = today();
   renderDashContent();
 };
 
 const switchDashTab = (p) => {
   ['dia','semana','mes'].forEach(t => document.getElementById(`dtab-${t}`)?.classList.toggle('active', t === p));
   window._dashPeriodo = p;
+  // Mostrar/ocultar selector de fecha segun pestaña
+  const sel = document.getElementById('dash-fecha-selector');
+  if (sel) sel.style.display = p === 'dia' ? 'block' : 'none';
   renderDashContent();
 };
 
@@ -3467,7 +3474,8 @@ const switchCarteraTab = (c) => {
 
 const renderDashContent = () => {
   const cartera = window._dashCartera === 'total' ? null : window._dashCartera;
-  const d = getDashboardData(cartera, window._dashPeriodo);
+  const fechaRef = window._dashPeriodo === 'dia' ? (window._dashFecha || today()) : null;
+  const d = getDashboardData(cartera, window._dashPeriodo, fechaRef);
   const hoy = today();
 
   let html = `
@@ -3499,10 +3507,11 @@ const renderDashContent = () => {
     </div>
 
     ${window._dashPeriodo === 'dia' ? (() => {
+      const fechaDash = window._dashFecha || today();
       const carteras = window._dashCartera === 'total' ? ['julieta', 'jorge'] : [window._dashCartera];
-      let sHtml = `<div class="section-title">Existencia en mano</div><div class="card">`;
+      let sHtml = `<div class="section-title">Existencia en mano${fechaDash !== today() ? ' · ' + formatDate(fechaDash) : ''}</div><div class="card">`;
       carteras.forEach(c => {
-        const s = calcularSaldoTeorico(c);
+        const s = calcularSaldoTeoricoFecha(c, fechaDash);
         sHtml += `
           ${carteras.length > 1 ? `<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-top:${c==='julieta'?'0':'12px'};margin-bottom:6px">${c === 'julieta' ? 'Julieta' : 'Jorge'}</div>` : ''}
           <div class="resumen-row">
@@ -3516,8 +3525,8 @@ const renderDashContent = () => {
         `;
       });
       if (window._dashCartera === 'total') {
-        const sJ = calcularSaldoTeorico('julieta');
-        const sJo = calcularSaldoTeorico('jorge');
+        const sJ = calcularSaldoTeoricoFecha('julieta', fechaDash);
+        const sJo = calcularSaldoTeoricoFecha('jorge', fechaDash);
         sHtml += `
           <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
             <div class="resumen-row">
