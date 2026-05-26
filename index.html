@@ -780,7 +780,7 @@ const load = () => {
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 // --- DATE UTILS ---
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset() - 180); return d.toISOString().slice(0, 10); };
 
 const isHabil = (date, frecuencia) => {
   const d = new Date(date + 'T12:00:00');
