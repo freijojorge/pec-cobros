@@ -1238,46 +1238,44 @@ const cuandoPuedeRenovar = (planId) => {
 
 // --- RESUMEN CIERRE DEL DÍA ---
 const calcularSaldoTeoricoFecha = (cartera, fecha) => {
-  // Buscar el cierre más reciente ANTERIOR a la fecha
-  // Incluye cierres iniciales identificados por id
+  // Buscar el cierre más reciente ANTERIOR o igual a la fecha
   const cierresAnteriores = state.cierres
     .filter(c => c.cartera === cartera && c.fecha <= fecha)
     .sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   let saldoEfectivo = cierresAnteriores.length > 0 ? cierresAnteriores[0].saldoFinalEfectivo : 0;
   let saldoTransferencia = cierresAnteriores.length > 0 ? cierresAnteriores[0].saldoFinalTransferencia : 0;
+  const fechaDesde = cierresAnteriores.length > 0 ? cierresAnteriores[0].fecha : '2000-01-01';
 
-  // Sumar cobros reales del día
-  const cobrosHoy = state.cobros.filter(c => c.fecha === fecha && c.cartera === cartera && !c.esVirtual);
-  cobrosHoy.forEach(c => {
-    saldoEfectivo += c.montoEfectivo || 0;
+  // Sumar todos los movimientos DESDE el cierre hasta la fecha pedida (acumulado)
+  const cobrosRango = state.cobros.filter(c => c.fecha > fechaDesde && c.fecha <= fecha && c.cartera === cartera && !c.esVirtual);
+  cobrosRango.forEach(c => {
+    saldoEfectivo += (c.montoEfectivo || 0) + (c.interesMora || 0);
     saldoTransferencia += c.montoTransferencia || 0;
-    saldoEfectivo += c.interesMora || 0;
   });
 
-  // Restar gastos
-  const gastosHoy = state.gastos.filter(g => g.fecha === fecha && g.cartera === cartera);
-  gastosHoy.forEach(g => {
+  const gastosRango = state.gastos.filter(g => g.fecha > fechaDesde && g.fecha <= fecha && g.cartera === cartera);
+  gastosRango.forEach(g => {
     saldoEfectivo -= g.montoEfectivo || 0;
     saldoTransferencia -= g.montoTransferencia || 0;
   });
 
-  // Restar renovaciones entregadas
-  const renovacionesHoy = state.renovaciones.filter(r => r.fecha === fecha && r.cartera === cartera);
-  renovacionesHoy.forEach(r => {
+  const renovacionesRango = state.renovaciones.filter(r => r.fecha > fechaDesde && r.fecha <= fecha && r.cartera === cartera);
+  renovacionesRango.forEach(r => {
     saldoEfectivo -= r.efectivoEntregado || 0;
     saldoTransferencia -= r.transferenciaEntregada || 0;
   });
 
-  // Créditos nuevos: descontar efectivo/transferencia, sumar fondos propios
-  const creditosNuevosHoy = state.planes.filter(p => p.fechaInicio === fecha && p.cartera === cartera && (p.efectivoEntregado > 0 || p.transferenciaEntregada > 0 || p.fondosPropios > 0));
-  creditosNuevosHoy.forEach(p => {
+  const creditosNuevosRango = state.planes.filter(p => p.fechaInicio > fechaDesde && p.fechaInicio <= fecha && p.cartera === cartera && (p.efectivoEntregado > 0 || p.transferenciaEntregada > 0));
+  creditosNuevosRango.forEach(p => {
     saldoEfectivo -= p.efectivoEntregado || 0;
     saldoTransferencia -= p.transferenciaEntregada || 0;
-    // Fondos propios: Jorge inyecta capital propio → suma al saldo efectivo y luego sale como crédito
-    // El neto es cero para el capital (entra y sale), pero se registra para trazabilidad
-    // No afecta el saldo porque entra y sale en el mismo momento
   });
+
+  // Para el resumen del día específico (solo el día pedido)
+  const cobrosHoy = cobrosRango.filter(c => c.fecha === fecha);
+  const gastosHoy = gastosRango.filter(g => g.fecha === fecha);
+  const renovacionesHoy = renovacionesRango.filter(r => r.fecha === fecha);
 
   const totalCobradoEfectivo = cobrosHoy.reduce((s, c) => s + (c.montoEfectivo || 0) + (c.interesMora || 0), 0);
   const totalCobradoTransferencia = cobrosHoy.reduce((s, c) => s + (c.montoTransferencia || 0), 0);
