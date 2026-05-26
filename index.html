@@ -1269,6 +1269,16 @@ const calcularSaldoTeoricoFecha = (cartera, fecha) => {
     saldoTransferencia -= r.transferenciaEntregada || 0;
   });
 
+  // Créditos nuevos: descontar efectivo/transferencia, sumar fondos propios
+  const creditosNuevosHoy = state.planes.filter(p => p.fechaInicio === fecha && p.cartera === cartera && (p.efectivoEntregado > 0 || p.transferenciaEntregada > 0 || p.fondosPropios > 0));
+  creditosNuevosHoy.forEach(p => {
+    saldoEfectivo -= p.efectivoEntregado || 0;
+    saldoTransferencia -= p.transferenciaEntregada || 0;
+    // Fondos propios: Jorge inyecta capital propio → suma al saldo efectivo y luego sale como crédito
+    // El neto es cero para el capital (entra y sale), pero se registra para trazabilidad
+    // No afecta el saldo porque entra y sale en el mismo momento
+  });
+
   const totalCobradoEfectivo = cobrosHoy.reduce((s, c) => s + (c.montoEfectivo || 0) + (c.interesMora || 0), 0);
   const totalCobradoTransferencia = cobrosHoy.reduce((s, c) => s + (c.montoTransferencia || 0), 0);
   const totalGastosEfectivo = gastosHoy.reduce((s, g) => s + (g.montoEfectivo || 0), 0);
@@ -2533,6 +2543,27 @@ const showNuevoPlan = (clienteId) => {
       ` : `<div id="pp-ganancia" style="display:none"></div><div id="pp-tasa" style="display:none"></div>`}
       <div class="resumen-row"><span class="resumen-label">Fecha inicio</span><span class="resumen-value" id="pp-inicio">—</span></div>
     </div>
+    <div style="margin-top:4px">
+      <label class="input-label">¿De dónde sale el capital? <span style="color:var(--danger)">*</span></label>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <button type="button" id="origen-ef" class="btn" style="flex:1;min-width:100px;background:var(--bg3);border:1.5px solid var(--border)" onclick="toggleOrigenPlan('ef')">💵 Efectivo</button>
+        <button type="button" id="origen-tr" class="btn" style="flex:1;min-width:100px;background:var(--bg3);border:1.5px solid var(--border)" onclick="toggleOrigenPlan('tr')">🏦 Transferencia</button>
+        ${currentUser.cartera === 'jorge' ? `<button type="button" id="origen-fp" class="btn" style="flex:1;min-width:100px;background:var(--bg3);border:1.5px solid var(--border)" onclick="toggleOrigenPlan('fp')">💼 Fondos propios</button>` : ''}
+      </div>
+      <div id="plan-ef-group" style="display:none" class="input-group">
+        <label class="input-label">Monto efectivo $</label>
+        <input type="number" id="plan-ef" placeholder="$0" oninput="syncPlanEntrega()">
+      </div>
+      <div id="plan-tr-group" style="display:none" class="input-group">
+        <label class="input-label">Monto transferencia $</label>
+        <input type="number" id="plan-tr" placeholder="$0" oninput="syncPlanEntrega()">
+      </div>
+      <div id="plan-fp-group" style="display:none" class="input-group">
+        <label class="input-label">Fondos propios $</label>
+        <input type="number" id="plan-fp" placeholder="$0" oninput="syncPlanEntrega()">
+      </div>
+      <div id="plan-entrega-hint" style="font-size:12px;color:var(--text2);margin-bottom:12px"></div>
+    </div>
     <button class="btn btn-primary" onclick="confirmarNuevoPlan('${clienteId}')">Crear plan</button>
   `;
 
@@ -2593,14 +2624,61 @@ const recalcularPlan = (editado) => {
 
 const calcularCuotaSugerida = () => recalcularPlan('capital');
 
+const toggleOrigenPlan = (tipo) => {
+  const tipos = ['ef', 'tr', 'fp'];
+  tipos.forEach(t => {
+    const btn = document.getElementById('origen-' + t);
+    const grp = document.getElementById('plan-' + t + '-group');
+    if (!btn) return;
+    if (t === tipo) {
+      const activo = btn.style.borderColor === 'var(--accent)';
+      btn.style.borderColor = activo ? 'var(--border)' : 'var(--accent)';
+      btn.style.color = activo ? '' : 'var(--accent)';
+      if (grp) grp.style.display = activo ? 'none' : 'block';
+      if (activo && grp) { const inp = grp.querySelector('input'); if (inp) inp.value = ''; }
+    }
+  });
+  syncPlanEntrega();
+};
+
+const syncPlanEntrega = () => {
+  const ef = Number(document.getElementById('plan-ef')?.value || 0);
+  const tr = Number(document.getElementById('plan-tr')?.value || 0);
+  const fp = Number(document.getElementById('plan-fp')?.value || 0);
+  const capital = Number(document.getElementById('plan-capital')?.value || 0);
+  const hint = document.getElementById('plan-entrega-hint');
+  if (!hint) return;
+  const total = ef + tr + fp;
+  if (capital > 0 && total > 0) {
+    const diff = total - capital;
+    if (Math.abs(diff) < 1) {
+      hint.textContent = 'Total: ' + formatMoney(total) + ' ✓';
+      hint.style.color = 'var(--accent)';
+    } else {
+      hint.textContent = 'Total: ' + formatMoney(total) + ' · Falta: ' + formatMoney(capital - total);
+      hint.style.color = 'var(--warn)';
+    }
+  } else {
+    hint.textContent = '';
+  }
+};
+
 const confirmarNuevoPlan = (clienteId) => {
   const capital = Number(document.getElementById('plan-capital').value);
   const cuota = Number(document.getElementById('plan-cuota').value);
   const ncuotas = Number(document.getElementById('plan-ncuotas').value);
   const frecuencia = document.getElementById('plan-frecuencia').value;
   const obs = document.getElementById('plan-obs').value;
+  const efectivoEntregado = Number(document.getElementById('plan-ef')?.value || 0);
+  const transferenciaEntregada = Number(document.getElementById('plan-tr')?.value || 0);
+  const fondosPropios = Number(document.getElementById('plan-fp')?.value || 0);
 
   if (!capital || !cuota || !ncuotas) { toast('Ingresá capital, cuota y cantidad de cuotas', 'error'); return; }
+
+  // Validar origen obligatorio
+  const totalOrigen = efectivoEntregado + transferenciaEntregada + fondosPropios;
+  if (totalOrigen === 0) { toast('Indicá de dónde sale el capital', 'error'); return; }
+  if (Math.abs(totalOrigen - capital) > 1) { toast('El total del origen debe coincidir con el capital (' + formatMoney(capital) + ')', 'error'); return; }
 
   const cl = state.clientes.find(c => c.id === clienteId);
   const fechaInput = document.getElementById('plan-fecha-inicio')?.value;
@@ -2612,14 +2690,15 @@ const confirmarNuevoPlan = (clienteId) => {
     id: uid(), clienteId, cartera: cl.cartera,
     capital, valorCuota: cuota, totalCuotas, cuotaActual: 1,
     fechaInicio: inicio, frecuencia, estado: 'activo',
-    tasaAplicada: tasa, observaciones: obs
+    tasaAplicada: tasa, observaciones: obs,
+    efectivoEntregado, transferenciaEntregada, fondosPropios
   };
 
   state.planes.push(plan);
   const cuotas = generarCuotas(plan);
   state.cuotas.push(...cuotas);
-  save();
 
+  save();
   toast('Plan creado correctamente');
   navigate(() => showCliente(clienteId));
 };
@@ -3110,16 +3189,21 @@ const renderResumenDia = (cartera, fecha) => {
   const cobrosdia = state.cobros.filter(c => c.fecha === fecha && !c.esVirtual && c.cartera === cartera);
   const gastosdia = state.gastos.filter(g => g.fecha === fecha && g.cartera === cartera);
   const renovacionesdia = state.renovaciones.filter(r => r.fecha === fecha && r.cartera === cartera);
+  const creditosNuevosdia = state.planes.filter(p => p.fechaInicio === fecha && p.cartera === cartera && (p.efectivoEntregado > 0 || p.transferenciaEntregada > 0 || p.fondosPropios > 0));
 
   const cobradoEf = cobrosdia.reduce((s, c) => s + (c.montoEfectivo || 0) + (c.interesMora || 0), 0);
   const cobradoTr = cobrosdia.reduce((s, c) => s + (c.montoTransferencia || 0), 0);
   const renEf = renovacionesdia.reduce((s, r) => s + (r.efectivoEntregado || 0), 0);
   const renTr = renovacionesdia.reduce((s, r) => s + (r.transferenciaEntregada || 0), 0);
   const renVirtual = renovacionesdia.reduce((s, r) => s + (r.totalDescuento || 0), 0);
+  const creditosNuevosEf = creditosNuevosdia.reduce((s, p) => s + (p.efectivoEntregado || 0), 0);
+  const creditosNuevosTr = creditosNuevosdia.reduce((s, p) => s + (p.transferenciaEntregada || 0), 0);
+  const creditosNuevosFP = creditosNuevosdia.reduce((s, p) => s + (p.fondosPropios || 0), 0);
   const gastosEf = gastosdia.reduce((s, g) => s + (g.montoEfectivo || 0), 0);
   const gastosTr = gastosdia.reduce((s, g) => s + (g.montoTransferencia || 0), 0);
-  const saldoHoyEf = cobradoEf - renEf - gastosEf;
-  const saldoHoyTr = cobradoTr - renTr - gastosTr;
+  // Fondos propios: neto 0 en saldo (entra y sale en el mismo momento)
+  const saldoHoyEf = cobradoEf - renEf - creditosNuevosEf - gastosEf;
+  const saldoHoyTr = cobradoTr - renTr - creditosNuevosTr - gastosTr;
 
   let html = `
     <div class="card" style="margin-bottom:12px">
@@ -3127,19 +3211,23 @@ const renderResumenDia = (cartera, fecha) => {
       <div class="resumen-row"><span class="resumen-label">✅ Cobros efectivo</span><span class="resumen-value accent">+${formatMoney(cobradoEf)}</span></div>
       <div class="resumen-row"><span class="resumen-label">✅ Cobros transferencia</span><span class="resumen-value accent">+${formatMoney(cobradoTr)}</span></div>
       ${renVirtual > 0 ? `<div class="resumen-row"><span class="resumen-label" style="color:var(--accent2)">🔄 Cuotas saldadas x renovación</span><span class="resumen-value" style="color:var(--accent2)">+${formatMoney(renVirtual)}</span></div>` : ''}
+      ${creditosNuevosFP > 0 ? `<div class="resumen-row"><span class="resumen-label" style="color:var(--accent2)">💼 Fondos propios Jorge</span><span class="resumen-value" style="color:var(--accent2)">+${formatMoney(creditosNuevosFP)}</span></div>` : ''}
     </div>
 
     <div class="card" style="margin-bottom:12px">
       <div style="font-size:12px;font-weight:700;color:var(--danger);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.6px">Egresos</div>
       ${renEf > 0 ? `<div class="resumen-row"><span class="resumen-label">🔄 Renovación efectivo</span><span class="resumen-value danger">−${formatMoney(renEf)}</span></div>` : ''}
       ${renTr > 0 ? `<div class="resumen-row"><span class="resumen-label">🔄 Renovación transf.</span><span class="resumen-value danger">−${formatMoney(renTr)}</span></div>` : ''}
+      ${creditosNuevosEf > 0 ? `<div class="resumen-row"><span class="resumen-label">💳 Crédito nuevo efectivo</span><span class="resumen-value danger">−${formatMoney(creditosNuevosEf)}</span></div>` : ''}
+      ${creditosNuevosTr > 0 ? `<div class="resumen-row"><span class="resumen-label">💳 Crédito nuevo transf.</span><span class="resumen-value danger">−${formatMoney(creditosNuevosTr)}</span></div>` : ''}
+      ${creditosNuevosFP > 0 ? `<div class="resumen-row"><span class="resumen-label">💼 Crédito nuevo fondos propios</span><span class="resumen-value danger">−${formatMoney(creditosNuevosFP)}</span></div>` : ''}
       ${gastosdia.map(g => `
         <div class="resumen-row">
           <span class="resumen-label">💸 ${g.descripcion}</span>
           <span class="resumen-value danger">−${formatMoney((g.montoEfectivo||0)+(g.montoTransferencia||0))}</span>
         </div>
       `).join('')}
-      ${gastosdia.length === 0 && renEf === 0 && renTr === 0 ? `<div style="font-size:13px;color:var(--text3)">Sin egresos</div>` : ''}
+      ${gastosdia.length === 0 && renEf === 0 && renTr === 0 && creditosNuevosEf === 0 && creditosNuevosTr === 0 && creditosNuevosFP === 0 ? `<div style="font-size:13px;color:var(--text3)">Sin egresos</div>` : ''}
     </div>
 
     <div class="section-title">Resultado del día</div>
@@ -4225,7 +4313,7 @@ window.confirmarNuevoPlan=confirmarNuevoPlan; window.confirmarGasto=confirmarGas
 window.confirmarCierre=confirmarCierre; window.calcularCuotaSugerida=calcularCuotaSugerida;
 window.recalcularPlan=recalcularPlan;
 window.calcularPreviewRenovacion=calcularPreviewRenovacion; window.ejecutarRenovacion=ejecutarRenovacion;
-window.confirmarRenovacionFinal=confirmarRenovacionFinal; window.syncRenEntrega=syncRenEntrega;
+window.confirmarRenovacionFinal=confirmarRenovacionFinal; window.syncRenEntrega=syncRenEntrega; window.toggleOrigenPlan=toggleOrigenPlan; window.syncPlanEntrega=syncPlanEntrega;
 window.eliminarCliente=eliminarCliente; window.navClick=navClick; window.switchTabRen=switchTabRen;
 window.switchDashTab=switchDashTab; window.switchCarteraTab=switchCarteraTab;
 window.showRenovacionAdvertencia=showRenovacionAdvertencia; window.showUsuarios=showUsuarios;
