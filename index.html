@@ -1298,7 +1298,7 @@ const calcularSaldoTeoricoFecha = (cartera, fecha) => {
 const calcularSaldoTeorico = (cartera) => calcularSaldoTeoricoFecha(cartera, today());
 
 // --- DASHBOARD ADMIN ---
-const getDashboardData = (cartera, periodo, fechaRef) => {
+const getDashboardData = (cartera, periodo, fechaRef, desdeOverride, hastaOverride) => {
   const hoy = fechaRef || today();
   let desde, hasta;
 
@@ -1308,6 +1308,9 @@ const getDashboardData = (cartera, periodo, fechaRef) => {
     d.setDate(d.getDate() - d.getDay() + 1);
     desde = d.toISOString().slice(0, 10);
     hasta = addDays(desde, 6);
+  } else if (periodo === 'rango') {
+    desde = desdeOverride || today();
+    hasta = hastaOverride || today();
   } else {
     desde = hoy.slice(0, 7) + '-01';
     const d = new Date(hoy.slice(0, 7) + '-01T12:00:00');
@@ -3437,9 +3440,15 @@ const showDashboard = () => {
       <button class="tab active" id="dtab-dia" onclick="switchDashTab('dia')">Día</button>
       <button class="tab" id="dtab-semana" onclick="switchDashTab('semana')">Semana</button>
       <button class="tab" id="dtab-mes" onclick="switchDashTab('mes')">Mes</button>
+      <button class="tab" id="dtab-rango" onclick="switchDashTab('rango')">Rango</button>
     </div>
     <div id="dash-fecha-selector" style="padding:8px 16px 0">
       <input type="date" id="dash-fecha-input" value="${today()}" onchange="window._dashFecha=this.value; renderDashContent()" style="width:100%;background:var(--bg3);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);font-size:14px;padding:10px 14px;outline:none">
+    </div>
+    <div id="dash-rango-selector" style="padding:8px 16px 0;display:none;gap:8px;align-items:center">
+      <input type="date" id="dash-desde-input" value="${today()}" onchange="window._dashDesde=this.value; renderDashContent()" style="flex:1;background:var(--bg3);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);font-size:14px;padding:10px 14px;outline:none">
+      <span style="color:var(--text2);font-size:13px">→</span>
+      <input type="date" id="dash-hasta-input" value="${today()}" onchange="window._dashHasta=this.value; renderDashContent()" style="flex:1;background:var(--bg3);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);font-size:14px;padding:10px 14px;outline:none">
     </div>
     <div class="tabs" style="margin-top:8px">
       <button class="tab active" id="ctab-julieta" onclick="switchCarteraTab('julieta')">Julieta</button>
@@ -3452,15 +3461,18 @@ const showDashboard = () => {
   window._dashPeriodo = 'dia';
   window._dashCartera = 'julieta';
   window._dashFecha = today();
+  window._dashDesde = today();
+  window._dashHasta = today();
   renderDashContent();
 };
 
 const switchDashTab = (p) => {
-  ['dia','semana','mes'].forEach(t => document.getElementById(`dtab-${t}`)?.classList.toggle('active', t === p));
+  ['dia','semana','mes','rango'].forEach(t => document.getElementById(`dtab-${t}`)?.classList.toggle('active', t === p));
   window._dashPeriodo = p;
-  // Mostrar/ocultar selector de fecha segun pestaña
-  const sel = document.getElementById('dash-fecha-selector');
-  if (sel) sel.style.display = p === 'dia' ? 'block' : 'none';
+  const selDia = document.getElementById('dash-fecha-selector');
+  const selRango = document.getElementById('dash-rango-selector');
+  if (selDia) selDia.style.display = p === 'dia' ? 'block' : 'none';
+  if (selRango) selRango.style.display = p === 'rango' ? 'flex' : 'none';
   renderDashContent();
 };
 
@@ -3473,7 +3485,7 @@ const switchCarteraTab = (c) => {
 const renderDashContent = () => {
   const cartera = window._dashCartera === 'total' ? null : window._dashCartera;
   const fechaRef = window._dashPeriodo === 'dia' ? (window._dashFecha || today()) : null;
-  const d = getDashboardData(cartera, window._dashPeriodo, fechaRef);
+  const d = getDashboardData(cartera, window._dashPeriodo, fechaRef, window._dashDesde, window._dashHasta);
   const hoy = today();
 
   let html = `
