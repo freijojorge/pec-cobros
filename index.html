@@ -4371,14 +4371,18 @@ const adminFiltrarClientes = () => {
   if (!cont) return;
   if (q.length < 2) { cont.innerHTML = ''; return; }
   const matches = state.clientes.filter(c => c.nombre.toLowerCase().includes(q) && c.activo !== false);
-  if (!matches.length) { cont.innerHTML = '<div class="empty-state"><div class="empty-icon">🔎</div><div class="empty-text">Sin resultados</div></div>'; return; }
+  if (!matches.length) {
+    cont.innerHTML = '<div class="empty-state"><div class="empty-icon">🔎</div><div class="empty-text">Sin resultados</div></div>';
+    return;
+  }
   cont.innerHTML = matches.map(c => {
     const planes = state.planes.filter(p => p.clienteId === c.id && p.estado === 'activo');
-    return '<div class="card" style="margin-bottom:8px;cursor:pointer" onclick="adminVerCliente(\'' + c.id + '\')">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center">' +
-      '<div><div style="font-size:15px;font-weight:600">' + c.nombre + '</div>' +
-      '<div style="font-size:12px;color:var(--text2);margin-top:2px">' + planes.length + ' plan' + (planes.length !== 1 ? 'es' : '') + ' activo' + (planes.length !== 1 ? 's' : '') + '</div></div>' +
-      '<span style="font-size:20px">›</span></div></div>';
+    const nPlanes = planes.length;
+    return '<div class="card" style="margin-bottom:8px;cursor:pointer" onclick="adminVerCliente(\'' + c.id + '\')">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center">'
+      + '<div><div style="font-size:15px;font-weight:600">' + c.nombre + '</div>'
+      + '<div style="font-size:12px;color:var(--text2);margin-top:2px">' + nPlanes + ' plan' + (nPlanes !== 1 ? 'es' : '') + ' activo' + (nPlanes !== 1 ? 's' : '') + '</div></div>'
+      + '<span style="font-size:20px">›</span></div></div>';
   }).join('');
 };
 
@@ -4390,45 +4394,44 @@ const adminVerCliente = (clienteId) => {
   if (!planes.length) {
     html += '<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">Sin planes activos</div></div>';
   } else {
-    planes.forEach(plan => {
+    planes.forEach(function(plan) {
       const cuotas = state.cuotas.filter(c => c.planId === plan.id);
       const pagadas = cuotas.filter(c => c.estado === 'pagada').length;
       const parciales = cuotas.filter(c => c.estado === 'parcial');
-      html += '<div class="card" style="margin-bottom:12px">' +
-        '<div class="card-header"><span class="card-title">💰 ' + formatMoney(plan.capital) + '</span><span class="badge badge-green">' + plan.frecuencia + '</span></div>' +
-        '<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text2);margin-bottom:12px">' +
-        '<span>Cuota: <strong style="color:var(--text)">' + formatMoney(plan.valorCuota) + '</strong></span>' +
-        '<span>Pagadas: <strong style="color:var(--accent)">' + pagadas + '/' + cuotas.length + '</strong></span></div>' +
-        '<div style="margin-bottom:10px">' +
-        '<div style="font-size:12px;color:var(--text2);margin-bottom:6px;font-weight:600">AJUSTAR VALOR DE CUOTA</div>' +
-        '<div style="display:flex;gap:8px;align-items:center">' +
-        '<input type="number" id="nueva-cuota-' + plan.id + '" value="' + plan.valorCuota + '" style="flex:1;font-size:15px">' +
-        '<div style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text2)">' +
-        '<label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="prop-pend-' + plan.id + '" checked> Pendientes</label>' +
-        '<label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="prop-paga-' + plan.id + '"> Pagadas</label></div>' +
-        "<button class=\"btn btn-primary btn-sm\" onclick=\"adminAjustarCuota('" + plan.id + "','" + clienteId + "')\">Aplicar</button></div></div>";
+      html += '<div class="card" style="margin-bottom:12px">'
+        + '<div class="card-header"><span class="card-title">💰 ' + formatMoney(plan.capital) + '</span><span class="badge badge-green">' + plan.frecuencia + '</span></div>'
+        + '<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text2);margin-bottom:12px">'
+        + '<span>Cuota: <strong style="color:var(--text)">' + formatMoney(plan.valorCuota) + '</strong></span>'
+        + '<span>Pagadas: <strong style="color:var(--accent)">' + pagadas + '/' + cuotas.length + '</strong></span></div>'
+        + '<div style="margin-bottom:10px">'
+        + '<div style="font-size:12px;color:var(--text2);margin-bottom:6px;font-weight:600">AJUSTAR VALOR DE CUOTA</div>'
+        + '<div style="display:flex;gap:8px;align-items:center">'
+        + '<input type="number" id="nueva-cuota-' + plan.id + '" value="' + plan.valorCuota + '" style="flex:1;font-size:15px">'
+        + '<div style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text2)">'
+        + '<label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="prop-pend-' + plan.id + '" checked> Pendientes</label>'
+        + '<label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="prop-paga-' + plan.id + '"> Pagadas</label></div>'
+        + '<button class="btn btn-primary btn-sm" onclick="adminAjustarCuota(\'' + plan.id + '\',\'' + clienteId + '\')">Aplicar</button></div></div>';
       if (parciales.length) {
-        html += '<div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">' +
-          '<div style="font-size:12px;color:var(--text2);margin-bottom:6px;font-weight:600">PAGOS PARCIALES (' + parciales.length + ')</div>';
-        parciales.forEach(cq => {
+        html += '<div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">'
+          + '<div style="font-size:12px;color:var(--text2);margin-bottom:6px;font-weight:600">PAGOS PARCIALES (' + parciales.length + ')</div>';
+        parciales.forEach(function(cq) {
           const resta = cq.saldoPendiente || (cq.monto - cq.cobradoEfectivo - cq.cobradoTransferencia);
-          html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:var(--bg3);border-radius:8px;margin-bottom:6px">' +
-            '<div><div style="font-size:13px;font-weight:500">Cuota ' + cq.numero + ' — ' + formatDate(cq.fecha) + '</div>' +
-            '<div style="font-size:12px;color:var(--warn)">Pagado: ' + formatMoney(cq.cobradoEfectivo + cq.cobradoTransferencia) + ' · Resta: ' + formatMoney(resta) + '</div></div>' +
-            "<button class=\"btn btn-warn btn-sm\" onclick=\"adminRevertirParcial('" + cq.id + "','" + clienteId + "')\">Revertir</button></div>";
+          html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:var(--bg3);border-radius:8px;margin-bottom:6px">'
+            + '<div><div style="font-size:13px;font-weight:500">Cuota ' + cq.numero + ' — ' + formatDate(cq.fecha) + '</div>'
+            + '<div style="font-size:12px;color:var(--warn)">Pagado: ' + formatMoney(cq.cobradoEfectivo + cq.cobradoTransferencia) + ' · Resta: ' + formatMoney(resta) + '</div></div>'
+            + '<button class="btn btn-warn btn-sm" onclick="adminRevertirParcial(\'' + cq.id + '\',\'' + clienteId + '\')">Revertir</button></div>';
         });
         html += '</div>';
       }
-      html += '<div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">' +
-        "<button class=\"btn btn-secondary btn-sm\" style=\"width:100%;font-size:12px\" onclick=\"adminVerCuotas('" + plan.id + "','" + clienteId + "')\">✏️ Editar cuotas individualmente</button></div></div>";
+      html += '<div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">'
+        + '<button class="btn btn-secondary btn-sm" style="width:100%;font-size:12px" onclick="adminVerCuotas(\'' + plan.id + '\',\'' + clienteId + '\')">✏️ Editar cuotas individualmente</button></div></div>';
     });
   }
-  navigate(() => render(html, cl.nombre, 'Panel Admin', true));
+  navigate(function() { render(html, cl.nombre, 'Panel Admin', true); });
 };
 
 const adminAjustarCuota = (planId, clienteId) => {
-  const input = document.getElementById('nueva-cuota-' + planId);
-  const nuevaVal = parseInt(input?.value);
+  const nuevaVal = parseInt(document.getElementById('nueva-cuota-' + planId)?.value);
   if (!nuevaVal || nuevaVal <= 0) { toast('Valor inválido', 'error'); return; }
   const propPend = document.getElementById('prop-pend-' + planId)?.checked;
   const propPaga = document.getElementById('prop-paga-' + planId)?.checked;
@@ -4444,7 +4447,7 @@ const adminAjustarCuota = (planId, clienteId) => {
   });
   save();
   toast('Cuota: ' + formatMoney(anterior) + ' → ' + formatMoney(nuevaVal) + ' (' + n + ' cuotas)');
-  setTimeout(() => adminVerCliente(clienteId), 800);
+  setTimeout(function() { adminVerCliente(clienteId); }, 800);
 };
 
 const adminRevertirParcial = (cuotaId, clienteId) => {
@@ -4459,7 +4462,7 @@ const adminRevertirParcial = (cuotaId, clienteId) => {
   delete cuota.montoPagado;
   save();
   toast('Pago parcial revertido');
-  setTimeout(() => adminVerCliente(clienteId), 800);
+  setTimeout(function() { adminVerCliente(clienteId); }, 800);
 };
 
 const adminVerCuotas = (planId, clienteId) => {
@@ -4467,24 +4470,24 @@ const adminVerCuotas = (planId, clienteId) => {
   const cl = state.clientes.find(c => c.id === clienteId);
   const cuotas = state.cuotas.filter(c => c.planId === planId).sort((a, b) => a.numero - b.numero);
   let html = '<div class="section-title">' + formatMoney(plan.capital) + ' — ' + cuotas.length + ' cuotas</div>';
-  cuotas.forEach(cq => {
+  cuotas.forEach(function(cq) {
     const color = cq.estado === 'pagada' ? 'var(--accent)' : cq.estado === 'parcial' ? 'var(--warn)' : 'var(--text2)';
     const icon = cq.estado === 'pagada' ? '✅' : cq.estado === 'parcial' ? '⚠️' : '⏳';
-    html += '<div class="card" style="padding:12px;margin-bottom:8px">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
-      '<div><span style="font-size:13px;font-weight:600">Cuota ' + cq.numero + '</span>' +
-      '<span style="font-size:11px;color:var(--text3);margin-left:8px">' + formatDate(cq.fecha) + '</span></div>' +
-      '<span style="font-size:12px;color:' + color + '">' + icon + ' ' + cq.estado + '</span></div>' +
-      '<div style="display:flex;gap:8px;align-items:center">' +
-      '<input type="number" id="monto-cq-' + cq.id + '" value="' + cq.monto + '" style="flex:1;font-size:14px;padding:8px 12px">' +
-      '<select id="estado-cq-' + cq.id + '" style="flex:1;font-size:13px;padding:8px 10px">' +
-      '<option value="pendiente"' + (cq.estado === 'pendiente' ? ' selected' : '') + '>⏳ Pendiente</option>' +
-      '<option value="pagada"' + (cq.estado === 'pagada' ? ' selected' : '') + '>✅ Pagada</option>' +
-      '<option value="parcial"' + (cq.estado === 'parcial' ? ' selected' : '') + '>⚠️ Parcial</option>' +
-      '</select>' +
-      "<button class=\"btn btn-primary btn-sm\" onclick=\"adminGuardarCuota('" + cq.id + "')\">✓</button></div></div>";
+    html += '<div class="card" style="padding:12px;margin-bottom:8px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+      + '<div><span style="font-size:13px;font-weight:600">Cuota ' + cq.numero + '</span>'
+      + '<span style="font-size:11px;color:var(--text3);margin-left:8px">' + formatDate(cq.fecha) + '</span></div>'
+      + '<span style="font-size:12px;color:' + color + '">' + icon + ' ' + cq.estado + '</span></div>'
+      + '<div style="display:flex;gap:8px;align-items:center">'
+      + '<input type="number" id="monto-cq-' + cq.id + '" value="' + cq.monto + '" style="flex:1;font-size:14px;padding:8px 12px">'
+      + '<select id="estado-cq-' + cq.id + '" style="flex:1;font-size:13px;padding:8px 10px">'
+      + '<option value="pendiente"' + (cq.estado === 'pendiente' ? ' selected' : '') + '>⏳ Pendiente</option>'
+      + '<option value="pagada"' + (cq.estado === 'pagada' ? ' selected' : '') + '>✅ Pagada</option>'
+      + '<option value="parcial"' + (cq.estado === 'parcial' ? ' selected' : '') + '>⚠️ Parcial</option>'
+      + '</select>'
+      + '<button class="btn btn-primary btn-sm" onclick="adminGuardarCuota(\'' + cq.id + '\')">✓</button></div></div>';
   });
-  navigate(() => render(html, 'Cuotas — ' + cl.nombre, cl.nombre, true));
+  navigate(function() { render(html, 'Cuotas — ' + cl.nombre, cl.nombre, true); });
 };
 
 const adminGuardarCuota = (cuotaId) => {
@@ -4509,7 +4512,5 @@ window.showPanelAdmin=showPanelAdmin; window.adminFiltrarClientes=adminFiltrarCl
 window.adminVerCliente=adminVerCliente; window.adminAjustarCuota=adminAjustarCuota;
 window.adminRevertirParcial=adminRevertirParcial; window.adminVerCuotas=adminVerCuotas;
 window.adminGuardarCuota=adminGuardarCuota;
-
-window.recargarDatos=recargarDatos;
 })();</script>
 </body></html>
