@@ -4351,7 +4351,7 @@ window.showEditCliente=showEditCliente; window.confirmarEditCliente=confirmarEdi
 // ===== PANEL ADMIN =====
 const showPanelAdmin = () => {
   if (currentUser.role !== 'admin') return;
-  let html = `
+  const html = `
     <div class="section-title">Panel de Administración</div>
     <div class="card" style="margin-bottom:12px">
       <div class="card-header"><span class="card-title">🔍 Buscar cliente</span></div>
@@ -4366,24 +4366,19 @@ const showPanelAdmin = () => {
 };
 
 const adminFiltrarClientes = () => {
-  const q = document.getElementById('admin-search')?.value.trim().toLowerCase();
+  const q = (document.getElementById('admin-search')?.value || '').trim().toLowerCase();
   const cont = document.getElementById('admin-resultados');
   if (!cont) return;
-  if (!q || q.length < 2) { cont.innerHTML = ''; return; }
+  if (q.length < 2) { cont.innerHTML = ''; return; }
   const matches = state.clientes.filter(c => c.nombre.toLowerCase().includes(q) && c.activo !== false);
-  if (matches.length === 0) { cont.innerHTML = `<div class="empty-state"><div class="empty-icon">🔎</div><div class="empty-text">Sin resultados</div></div>`; return; }
+  if (!matches.length) { cont.innerHTML = '<div class="empty-state"><div class="empty-icon">🔎</div><div class="empty-text">Sin resultados</div></div>'; return; }
   cont.innerHTML = matches.map(c => {
     const planes = state.planes.filter(p => p.clienteId === c.id && p.estado === 'activo');
-    return `
-      <div class="card" style="margin-bottom:8px;cursor:pointer" onclick="adminVerCliente('${c.id}')">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <div style="font-size:15px;font-weight:600">${c.nombre}</div>
-            <div style="font-size:12px;color:var(--text2);margin-top:2px">${planes.length} plan${planes.length !== 1 ? 'es' : ''} activo${planes.length !== 1 ? 's' : ''}</div>
-          </div>
-          <span style="font-size:20px">›</span>
-        </div>
-      </div>`;
+    return '<div class="card" style="margin-bottom:8px;cursor:pointer" onclick="adminVerCliente(\'' + c.id + '\')">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center">' +
+      '<div><div style="font-size:15px;font-weight:600">' + c.nombre + '</div>' +
+      '<div style="font-size:12px;color:var(--text2);margin-top:2px">' + planes.length + ' plan' + (planes.length !== 1 ? 'es' : '') + ' activo' + (planes.length !== 1 ? 's' : '') + '</div></div>' +
+      '<span style="font-size:20px">›</span></div></div>';
   }).join('');
 };
 
@@ -4391,91 +4386,64 @@ const adminVerCliente = (clienteId) => {
   const cl = state.clientes.find(c => c.id === clienteId);
   if (!cl) return;
   const planes = state.planes.filter(p => p.clienteId === clienteId && p.estado === 'activo');
-  let html = `<div class="section-title">Planes de ${cl.nombre}</div>`;
-  if (planes.length === 0) {
-    html += `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">Sin planes activos</div></div>`;
+  let html = '<div class="section-title">Planes de ' + cl.nombre + '</div>';
+  if (!planes.length) {
+    html += '<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">Sin planes activos</div></div>';
   } else {
     planes.forEach(plan => {
       const cuotas = state.cuotas.filter(c => c.planId === plan.id);
       const pagadas = cuotas.filter(c => c.estado === 'pagada').length;
       const parciales = cuotas.filter(c => c.estado === 'parcial');
-      html += `
-        <div class="card" style="margin-bottom:12px">
-          <div class="card-header">
-            <span class="card-title">💰 ${formatMoney(plan.capital)}</span>
-            <span class="badge badge-green">${plan.frecuencia}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text2);margin-bottom:12px">
-            <span>Cuota: <strong style="color:var(--text)">${formatMoney(plan.valorCuota)}</strong></span>
-            <span>Pagadas: <strong style="color:var(--accent)">${pagadas}/${cuotas.length}</strong></span>
-          </div>
-
-          <div style="margin-bottom:10px">
-            <div style="font-size:12px;color:var(--text2);margin-bottom:6px;font-weight:600">AJUSTAR VALOR DE CUOTA</div>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input type="number" id="nueva-cuota-${plan.id}" value="${plan.valorCuota}" style="flex:1;font-size:15px">
-              <div style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text2)">
-                <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="prop-pend-${plan.id}" checked> Pendientes</label>
-                <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="prop-paga-${plan.id}"> Pagadas</label>
-              </div>
-              <button class="btn btn-primary btn-sm" onclick="adminAjustarCuota('${plan.id}','${clienteId}')">Aplicar</button>
-            </div>
-          </div>
-
-          ${parciales.length > 0 ? `
-          <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
-            <div style="font-size:12px;color:var(--text2);margin-bottom:6px;font-weight:600">PAGOS PARCIALES (${parciales.length})</div>
-            ${parciales.map(cq => `
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:var(--bg3);border-radius:8px;margin-bottom:6px">
-                <div>
-                  <div style="font-size:13px;font-weight:500">Cuota ${cq.numero} — ${formatDate(cq.fecha)}</div>
-                  <div style="font-size:12px;color:var(--warn)">Pagado: ${formatMoney(cq.cobradoEfectivo + cq.cobradoTransferencia)} · Resta: ${formatMoney(cq.saldoPendiente || (cq.monto - cq.cobradoEfectivo - cq.cobradoTransferencia))}</div>
-                </div>
-                <button class="btn btn-warn btn-sm" onclick="adminRevertirParcial('${cq.id}','${clienteId}')">Revertir</button>
-              </div>
-            `).join('')}
-          </div>` : ''}
-
-          <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
-            <button class="btn btn-secondary btn-sm" style="width:100%;font-size:12px" onclick="adminVerCuotas('${plan.id}','${clienteId}')">✏️ Editar cuotas individualmente</button>
-          </div>
-        </div>`;
+      html += '<div class="card" style="margin-bottom:12px">' +
+        '<div class="card-header"><span class="card-title">💰 ' + formatMoney(plan.capital) + '</span><span class="badge badge-green">' + plan.frecuencia + '</span></div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text2);margin-bottom:12px">' +
+        '<span>Cuota: <strong style="color:var(--text)">' + formatMoney(plan.valorCuota) + '</strong></span>' +
+        '<span>Pagadas: <strong style="color:var(--accent)">' + pagadas + '/' + cuotas.length + '</strong></span></div>' +
+        '<div style="margin-bottom:10px">' +
+        '<div style="font-size:12px;color:var(--text2);margin-bottom:6px;font-weight:600">AJUSTAR VALOR DE CUOTA</div>' +
+        '<div style="display:flex;gap:8px;align-items:center">' +
+        '<input type="number" id="nueva-cuota-' + plan.id + '" value="' + plan.valorCuota + '" style="flex:1;font-size:15px">' +
+        '<div style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text2)">' +
+        '<label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="prop-pend-' + plan.id + '" checked> Pendientes</label>' +
+        '<label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="prop-paga-' + plan.id + '"> Pagadas</label></div>' +
+        "<button class=\"btn btn-primary btn-sm\" onclick=\"adminAjustarCuota('" + plan.id + "','" + clienteId + "')\">Aplicar</button></div></div>";
+      if (parciales.length) {
+        html += '<div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">' +
+          '<div style="font-size:12px;color:var(--text2);margin-bottom:6px;font-weight:600">PAGOS PARCIALES (' + parciales.length + ')</div>';
+        parciales.forEach(cq => {
+          const resta = cq.saldoPendiente || (cq.monto - cq.cobradoEfectivo - cq.cobradoTransferencia);
+          html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:var(--bg3);border-radius:8px;margin-bottom:6px">' +
+            '<div><div style="font-size:13px;font-weight:500">Cuota ' + cq.numero + ' — ' + formatDate(cq.fecha) + '</div>' +
+            '<div style="font-size:12px;color:var(--warn)">Pagado: ' + formatMoney(cq.cobradoEfectivo + cq.cobradoTransferencia) + ' · Resta: ' + formatMoney(resta) + '</div></div>' +
+            "<button class=\"btn btn-warn btn-sm\" onclick=\"adminRevertirParcial('" + cq.id + "','" + clienteId + "')\">Revertir</button></div>";
+        });
+        html += '</div>';
+      }
+      html += '<div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">' +
+        "<button class=\"btn btn-secondary btn-sm\" style=\"width:100%;font-size:12px\" onclick=\"adminVerCuotas('" + plan.id + "','" + clienteId + "')\">✏️ Editar cuotas individualmente</button></div></div>";
     });
   }
-  navigate(() => {
-    render(html, cl.nombre, 'Panel Admin', true);
-    // Re-render back goes to panel
-    document.querySelector('.header-back')?.addEventListener('click', () => {});
-  });
-  render(html, cl.nombre, 'Panel Admin', true);
-  document.querySelector('.header-back') && (document.querySelector('.header-back').onclick = () => navigate(() => showPanelAdmin()));
+  navigate(() => render(html, cl.nombre, 'Panel Admin', true));
 };
 
 const adminAjustarCuota = (planId, clienteId) => {
-  const nuevaVal = parseInt(document.getElementById(`nueva-cuota-${planId}`)?.value);
+  const input = document.getElementById('nueva-cuota-' + planId);
+  const nuevaVal = parseInt(input?.value);
   if (!nuevaVal || nuevaVal <= 0) { toast('Valor inválido', 'error'); return; }
-  const propPend = document.getElementById(`prop-pend-${planId}`)?.checked;
-  const propPaga = document.getElementById(`prop-paga-${planId}`)?.checked;
+  const propPend = document.getElementById('prop-pend-' + planId)?.checked;
+  const propPaga = document.getElementById('prop-paga-' + planId)?.checked;
   if (!propPend && !propPaga) { toast('Seleccioná al menos una opción', 'error'); return; }
-
   const plan = state.planes.find(p => p.id === planId);
   if (!plan) return;
-  const valorAnterior = plan.valorCuota;
+  const anterior = plan.valorCuota;
   plan.valorCuota = nuevaVal;
-
-  let actualizadas = 0;
+  let n = 0;
   state.cuotas.filter(c => c.planId === planId).forEach(c => {
-    if ((c.estado === 'pendiente' || c.estado === 'parcial') && propPend) {
-      c.monto = nuevaVal;
-      actualizadas++;
-    } else if (c.estado === 'pagada' && propPaga) {
-      c.monto = nuevaVal;
-      actualizadas++;
-    }
+    if ((c.estado === 'pendiente' || c.estado === 'parcial') && propPend) { c.monto = nuevaVal; n++; }
+    else if (c.estado === 'pagada' && propPaga) { c.monto = nuevaVal; n++; }
   });
-
   save();
-  toast(`✓ Cuota actualizada: ${formatMoney(valorAnterior)} → ${formatMoney(nuevaVal)} (${actualizadas} cuotas)`);
+  toast('Cuota: ' + formatMoney(anterior) + ' → ' + formatMoney(nuevaVal) + ' (' + n + ' cuotas)');
   setTimeout(() => adminVerCliente(clienteId), 800);
 };
 
@@ -4490,7 +4458,7 @@ const adminRevertirParcial = (cuotaId, clienteId) => {
   delete cuota.saldoPendiente;
   delete cuota.montoPagado;
   save();
-  toast('✓ Pago parcial revertido');
+  toast('Pago parcial revertido');
   setTimeout(() => adminVerCliente(clienteId), 800);
 };
 
@@ -4498,55 +4466,43 @@ const adminVerCuotas = (planId, clienteId) => {
   const plan = state.planes.find(p => p.id === planId);
   const cl = state.clientes.find(c => c.id === clienteId);
   const cuotas = state.cuotas.filter(c => c.planId === planId).sort((a, b) => a.numero - b.numero);
-  let html = `<div class="section-title">${formatMoney(plan.capital)} — ${cuotas.length} cuotas</div>`;
+  let html = '<div class="section-title">' + formatMoney(plan.capital) + ' — ' + cuotas.length + ' cuotas</div>';
   cuotas.forEach(cq => {
-    const estadoColor = cq.estado === 'pagada' ? 'var(--accent)' : cq.estado === 'parcial' ? 'var(--warn)' : 'var(--text2)';
-    const estadoIcon = cq.estado === 'pagada' ? '✅' : cq.estado === 'parcial' ? '⚠️' : '⏳';
-    html += `
-      <div class="card" style="padding:12px;margin-bottom:8px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div>
-            <span style="font-size:13px;font-weight:600">Cuota ${cq.numero}</span>
-            <span style="font-size:11px;color:var(--text3);margin-left:8px">${formatDate(cq.fecha)}</span>
-          </div>
-          <span style="font-size:12px;color:${estadoColor}">${estadoIcon} ${cq.estado}</span>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input type="number" id="monto-cq-${cq.id}" value="${cq.monto}" style="flex:1;font-size:14px;padding:8px 12px">
-          <select id="estado-cq-${cq.id}" style="flex:1;font-size:13px;padding:8px 10px">
-            <option value="pendiente" ${cq.estado === 'pendiente' ? 'selected' : ''}>⏳ Pendiente</option>
-            <option value="pagada" ${cq.estado === 'pagada' ? 'selected' : ''}>✅ Pagada</option>
-            <option value="parcial" ${cq.estado === 'parcial' ? 'selected' : ''}>⚠️ Parcial</option>
-          </select>
-          <button class="btn btn-primary btn-sm" onclick="adminGuardarCuota('${cq.id}')">✓</button>
-        </div>
-      </div>`;
+    const color = cq.estado === 'pagada' ? 'var(--accent)' : cq.estado === 'parcial' ? 'var(--warn)' : 'var(--text2)';
+    const icon = cq.estado === 'pagada' ? '✅' : cq.estado === 'parcial' ? '⚠️' : '⏳';
+    html += '<div class="card" style="padding:12px;margin-bottom:8px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+      '<div><span style="font-size:13px;font-weight:600">Cuota ' + cq.numero + '</span>' +
+      '<span style="font-size:11px;color:var(--text3);margin-left:8px">' + formatDate(cq.fecha) + '</span></div>' +
+      '<span style="font-size:12px;color:' + color + '">' + icon + ' ' + cq.estado + '</span></div>' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+      '<input type="number" id="monto-cq-' + cq.id + '" value="' + cq.monto + '" style="flex:1;font-size:14px;padding:8px 12px">' +
+      '<select id="estado-cq-' + cq.id + '" style="flex:1;font-size:13px;padding:8px 10px">' +
+      '<option value="pendiente"' + (cq.estado === 'pendiente' ? ' selected' : '') + '>⏳ Pendiente</option>' +
+      '<option value="pagada"' + (cq.estado === 'pagada' ? ' selected' : '') + '>✅ Pagada</option>' +
+      '<option value="parcial"' + (cq.estado === 'parcial' ? ' selected' : '') + '>⚠️ Parcial</option>' +
+      '</select>' +
+      "<button class=\"btn btn-primary btn-sm\" onclick=\"adminGuardarCuota('" + cq.id + "')\">✓</button></div></div>";
   });
-  render(html, `Cuotas — ${cl.nombre}`, cl.nombre, true);
-  document.querySelector('.header-back') && (document.querySelector('.header-back').onclick = () => adminVerCliente(clienteId));
+  navigate(() => render(html, 'Cuotas — ' + cl.nombre, cl.nombre, true));
 };
 
 const adminGuardarCuota = (cuotaId) => {
   const cuota = state.cuotas.find(c => c.id === cuotaId);
   if (!cuota) return;
-  const nuevoMonto = parseInt(document.getElementById(`monto-cq-${cuotaId}`)?.value);
-  const nuevoEstado = document.getElementById(`estado-cq-${cuotaId}`)?.value;
+  const nuevoMonto = parseInt(document.getElementById('monto-cq-' + cuotaId)?.value);
+  const nuevoEstado = document.getElementById('estado-cq-' + cuotaId)?.value;
   if (!nuevoMonto || nuevoMonto <= 0) { toast('Monto inválido', 'error'); return; }
   cuota.monto = nuevoMonto;
   cuota.estado = nuevoEstado;
   if (nuevoEstado === 'pendiente') {
-    cuota.cobradoEfectivo = 0;
-    cuota.cobradoTransferencia = 0;
-    cuota.fechaPago = null;
-    delete cuota.saldoPendiente;
-    delete cuota.montoPagado;
+    cuota.cobradoEfectivo = 0; cuota.cobradoTransferencia = 0;
+    cuota.fechaPago = null; delete cuota.saldoPendiente; delete cuota.montoPagado;
   } else if (nuevoEstado === 'pagada' && !cuota.fechaPago) {
-    cuota.fechaPago = today();
-    cuota.cobradoEfectivo = nuevoMonto;
-    cuota.cobradoTransferencia = 0;
+    cuota.fechaPago = today(); cuota.cobradoEfectivo = nuevoMonto; cuota.cobradoTransferencia = 0;
   }
   save();
-  toast(`✓ Cuota ${cuota.numero} guardada`);
+  toast('Cuota ' + cuota.numero + ' guardada');
 };
 
 window.showPanelAdmin=showPanelAdmin; window.adminFiltrarClientes=adminFiltrarClientes;
