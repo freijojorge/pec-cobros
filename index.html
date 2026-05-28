@@ -2228,6 +2228,17 @@ const showRegistrarCobro = (clienteId) => {
         <input type="number" id="cobro-transferencia" placeholder="$0" oninput="previewImputacion('${clienteId}')">
       </div>
     </div>
+    <div class="section-title" style="margin-top:4px">Interés (opcional)</div>
+    <div class="stat-grid" style="margin-bottom:8px">
+      <div class="input-group" style="margin:0">
+        <label class="input-label">Interés efectivo</label>
+        <input type="number" id="cobro-interes-efectivo" placeholder="$0">
+      </div>
+      <div class="input-group" style="margin:0">
+        <label class="input-label">Interés transferencia</label>
+        <input type="number" id="cobro-interes-transferencia" placeholder="$0">
+      </div>
+    </div>
     <div id="cobro-preview" style="margin-bottom:16px"></div>
   `;
 
@@ -2413,6 +2424,9 @@ const confirmarCobro = (clienteId) => {
   const mora = Number(document.getElementById('cobro-mora')?.value || 0);
   let efectivo = Number(document.getElementById('cobro-efectivo')?.value || 0);
   let transferencia = Number(document.getElementById('cobro-transferencia')?.value || 0);
+  const interesEfectivo = Number(document.getElementById('cobro-interes-efectivo')?.value || 0);
+  const interesTransferencia = Number(document.getElementById('cobro-interes-transferencia')?.value || 0);
+  const interesTotal = interesEfectivo + interesTransferencia;
 
   // El monto total es lo que ingresó el usuario en efectivo + transferencia
   let montoPagado = efectivo + transferencia;
@@ -2428,10 +2442,12 @@ const confirmarCobro = (clienteId) => {
     efectivo = montoPagado;
   }
 
-  if (montoPagado <= 0) { toast('Ingresá el monto cobrado', 'error'); return; }
+  if (montoPagado <= 0 && interesTotal <= 0) { toast('Ingresá el monto cobrado', 'error'); return; }
 
   // Usar imputación automática cronológica
-  const cobro = aplicarImputacion(clienteId, montoPagado, efectivo, transferencia, mora, currentUser.name);
+  const cobro = aplicarImputacion(clienteId, montoPagado, efectivo, transferencia, mora + interesTotal, currentUser.name);
+  cobro._interesEfectivo = interesEfectivo;
+  cobro._interesTransferencia = interesTransferencia;
   showResumenCobro(clienteId, cobro);
 };
 
@@ -2472,6 +2488,7 @@ const showResumenCobro = (clienteId, cobro) => {
     </div>
     <div style="font-size:13px;color:var(--text2);margin-bottom:16px">
       Efectivo: ${formatMoney(cobro.montoEfectivo)} · Transferencia: ${formatMoney(cobro.montoTransferencia)}
+      ${(cobro._interesEfectivo || cobro._interesTransferencia) ? `<br>Interés ef.: ${formatMoney(cobro._interesEfectivo||0)} · Interés transf.: ${formatMoney(cobro._interesTransferencia||0)}` : ''}
     </div>
   `;
 
@@ -3311,9 +3328,11 @@ const showCierre = () => {
   const cartera = currentUser.cartera;
   const hoy = today();
   const s = calcularSaldoTeorico(cartera);
+  const frase = state.fraseDelDia || '';
 
   let html = `
     <div class="section-title">Resumen del día · ${formatDate(hoy)}</div>
+    ${frase ? `<div class="card" style="margin-bottom:12px;border-color:rgba(0,212,170,0.3);text-align:center;padding:16px"><div style="font-size:13px;color:var(--text2);margin-bottom:4px">💬 Mensaje del día</div><div style="font-size:15px;font-weight:600;color:var(--accent)">${frase}</div></div>` : ''}
     <div class="resumen-box">
       <div class="resumen-row"><span class="resumen-label">✅ Cobros efectivo</span><span class="resumen-value accent">${formatMoney(s.totalCobradoEfectivo)}</span></div>
       <div class="resumen-row"><span class="resumen-label">✅ Cobros transferencia</span><span class="resumen-value accent">${formatMoney(s.totalCobradoTransferencia)}</span></div>
@@ -3685,10 +3704,21 @@ const showUsuarios = (tab = 'usuarios') => {
     <div class="tabs">
       <button class="tab ${tab === 'usuarios' ? 'active' : ''}" onclick="showUsuarios('usuarios')">👥 Usuarios</button>
       <button class="tab ${tab === 'saldo' ? 'active' : ''}" onclick="showUsuarios('saldo')">💰 Saldo inicial</button>
+      <button class="tab ${tab === 'frase' ? 'active' : ''}" onclick="showUsuarios('frase')">💬 Frase</button>
     </div>
   `;
 
-  if (tab === 'usuarios') {
+  if (tab === 'frase') {
+    const fraseActual = state.fraseDelDia || '';
+    html += `
+      <div style="font-size:13px;color:var(--text2);margin-bottom:16px">Esta frase aparece en la pantalla de cierre de Julieta</div>
+      <div class="input-group">
+        <label class="input-label">Frase del día</label>
+        <input type="text" id="frase-input" value="${fraseActual}" placeholder="Ej: Buen trabajo hoy!">
+      </div>
+      <button class="btn btn-primary" onclick="guardarFraseDelDia()">Guardar frase</button>
+    `;
+  } else if (tab === 'usuarios') {
     html += `
       <div style="font-size:13px;color:var(--text2);margin-bottom:16px">Administrá los usuarios y contraseñas del sistema</div>
       <button class="btn btn-primary" style="margin-bottom:16px" onclick="showNuevoUsuario()">+ Agregar usuario</button>
@@ -4347,6 +4377,15 @@ window.renderResumenDia=renderResumenDia; window.eliminarCobro=eliminarCobro;
 window.showHistorialCliente=showHistorialCliente; window.exportarBackupExcel=exportarBackupExcel;
 window.getClientesSinActividad=getClientesSinActividad;
 window.showEditCliente=showEditCliente; window.confirmarEditCliente=confirmarEditCliente;
+const guardarFraseDelDia = () => {
+  const frase = document.getElementById('frase-input')?.value.trim() || '';
+  state.fraseDelDia = frase;
+  save();
+  toast(frase ? 'Frase guardada' : 'Frase eliminada');
+  setTimeout(() => showUsuarios('frase'), 500);
+};
+window.guardarFraseDelDia = guardarFraseDelDia;
+
 window.recargarDatos=recargarDatos;
 })();</script>
 </body></html>
