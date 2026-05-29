@@ -1672,8 +1672,7 @@ const initNav = () => {
         { icon: '🏠', label: 'Inicio', fn: showHome },
         { icon: '👥', label: 'Clientes', fn: showClientes },
         { icon: '💸', label: 'Gastos', fn: showGastos },
-        { icon: '📅', label: 'Renovar', fn: () => showCalendarioRenovaciones(currentUser.cartera) },
-        { icon: '🔒', label: 'Cierre', fn: showCierre }
+        { icon: '📅', label: 'Renovar', fn: () => showCalendarioRenovaciones(currentUser.cartera) }
       ];
 
   nav.innerHTML = items.map((item, i) => `
