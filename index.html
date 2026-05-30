@@ -2445,9 +2445,14 @@ const confirmarCobro = (clienteId) => {
   if (montoPagado <= 0 && interesTotal <= 0) { toast('Ingresá el monto cobrado', 'error'); return; }
 
   // Usar imputación automática cronológica
-  const cobro = aplicarImputacion(clienteId, montoPagado, efectivo, transferencia, mora + interesTotal, currentUser.name);
-  cobro._interesEfectivo = interesEfectivo;
-  cobro._interesTransferencia = interesTransferencia;
+  const cobro = aplicarImputacion(clienteId, montoPagado, efectivo, transferencia, mora, currentUser.name);
+  // Agregar interés por separado al cobro
+  cobro.interesEfectivo = interesEfectivo;
+  cobro.interesTransferencia = interesTransferencia;
+  cobro.interesMora = mora + interesTotal;
+  cobro.montoEfectivo = efectivo + interesEfectivo;
+  cobro.montoTransferencia = transferencia + interesTransferencia;
+  save();
   showResumenCobro(clienteId, cobro);
 };
 
