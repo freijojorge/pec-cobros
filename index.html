@@ -3,7 +3,7 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0f1117"><title>GestiónPréstamos</title>
-  <script>window.APP_VERSION = 3;</script>
+  <script>window.APP_VERSION = 4;</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -2432,7 +2432,8 @@ const confirmarCobro = (clienteId) => {
   let montoPagado = efectivo + transferencia;
 
   // Si no ingresó método de pago, usar el total de cuotas chequeadas
-  if (montoPagado === 0) {
+  // Pero solo si tampoco ingresó interés
+  if (montoPagado === 0 && interesTotal === 0) {
     const checkedIds = [];
     document.querySelectorAll('#cuotas-cobro .cuota-check-item.checked').forEach(el => checkedIds.push(el.dataset.id));
     montoPagado = checkedIds.reduce((s, id) => {
@@ -2440,6 +2441,8 @@ const confirmarCobro = (clienteId) => {
       return s + (c ? (c.saldoPendiente !== undefined ? c.saldoPendiente : c.monto) : 0);
     }, 0);
     efectivo = montoPagado;
+  } else if (montoPagado === 0 && interesTotal > 0) {
+    // Solo interés — no tocar efectivo ni transferencia
   }
 
   if (montoPagado <= 0 && interesTotal <= 0) { toast('Ingresá el monto cobrado', 'error'); return; }
