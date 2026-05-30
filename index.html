@@ -2697,7 +2697,15 @@ const confirmarNuevoPlan = (clienteId) => {
   if (totalOrigen === 0) { toast('Indicá de dónde sale el capital', 'error'); return; }
   if (Math.abs(totalOrigen - capital) > 1) { toast('El total del origen debe coincidir con el capital (' + formatMoney(capital) + ')', 'error'); return; }
 
+  // Validar saldo disponible
   const cl = state.clientes.find(c => c.id === clienteId);
+  const saldoActual = calcularSaldoTeorico(cl.cartera);
+  if (efectivoEntregado > 0 && efectivoEntregado > saldoActual.saldoEfectivo) {
+    toast('Sin saldo suficiente en efectivo. Disponible: ' + formatMoney(saldoActual.saldoEfectivo), 'error'); return;
+  }
+  if (transferenciaEntregada > 0 && transferenciaEntregada > saldoActual.saldoTransferencia) {
+    toast('Sin saldo suficiente en transferencia. Disponible: ' + formatMoney(saldoActual.saldoTransferencia), 'error'); return;
+  }
   const fechaInput = document.getElementById('plan-fecha-inicio')?.value;
   const inicio = fechaInput || nextHabil(today(), frecuencia);
   const totalCuotas = ncuotas;
@@ -3003,6 +3011,16 @@ const confirmarRenovacionFinal = (clienteId, planId, capital, cuota, frecuencia,
   if (Math.abs(total - calc.netoEntregar) > 1) {
     toast(`El total debe ser ${formatMoney(calc.netoEntregar)}. Diferencia: ${formatMoney(total - calc.netoEntregar)}`, 'error');
     return;
+  }
+
+  // Validar saldo disponible
+  const clRen = state.clientes.find(c => c.id === clienteId);
+  const saldoRen = calcularSaldoTeorico(clRen.cartera);
+  if (ef > 0 && ef > saldoRen.saldoEfectivo) {
+    toast('Sin saldo suficiente en efectivo. Disponible: ' + formatMoney(saldoRen.saldoEfectivo), 'error'); return;
+  }
+  if (tr > 0 && tr > saldoRen.saldoTransferencia) {
+    toast('Sin saldo suficiente en transferencia. Disponible: ' + formatMoney(saldoRen.saldoTransferencia), 'error'); return;
   }
 
   document.getElementById('ren-modal')?.remove();
