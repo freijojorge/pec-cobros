@@ -3,7 +3,7 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0f1117"><title>GestiónPréstamos</title>
-  <script>window.APP_VERSION = 11;</script>
+  <script>window.APP_VERSION = 12;</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -1777,6 +1777,7 @@ const showHome = () => {
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <div>
         <div style="font-size:22px;font-weight:700">Hola, ${currentUser.name} 👋</div>
+        ${state.fraseDelDia ? `<div style="font-size:13px;color:var(--accent);font-weight:600;margin-top:4px">💬 ${state.fraseDelDia}</div>` : ''}
         <div style="font-size:13px;color:var(--text2);margin-top:2px">${formatDate(hoy)}</div>
       </div>
       ${isAdmin ? `<button class="btn btn-secondary btn-sm" style="width:auto;padding:8px 14px;font-size:13px" onclick="recargarDatos()">🔄 Actualizar</button>` : ''}
