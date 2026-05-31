@@ -3,7 +3,7 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0f1117"><title>GestiónPréstamos</title>
-  <script>window.APP_VERSION = 6;</script>
+  <script>window.APP_VERSION = 7;</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -914,27 +914,29 @@ const imputarPago = (clienteId, montoPagado) => {
 
 // Aplicar imputación al estado
 const aplicarImputacion = (clienteId, montoPagado, montoEfectivo, montoTransferencia, interesMora, registradoPor) => {
-  const { imputacion, sobrante } = imputarPago(clienteId, montoPagado);
+  const { imputacion, sobrante } = montoPagado > 0 ? imputarPago(clienteId, montoPagado) : { imputacion: [], sobrante: 0 };
   const hoy = today();
   const cartera = state.planes.find(p => p.clienteId === clienteId)?.cartera;
 
-  imputacion.forEach(imp => {
-    const cuota = state.cuotas.find(c => c.id === imp.cuotaId);
-    if (cuota) {
-      if (imp.parcial) {
-        cuota.estado = 'parcial';
-        cuota.saldoPendiente = imp.saldoRestante;
-        cuota.montoPagado = (cuota.montoPagado || 0) + imp.montoImputado;
-      } else {
-        cuota.estado = 'pagada';
-        cuota.fechaPago = hoy;
-        cuota.saldoPendiente = 0;
-        cuota.montoPagado = cuota.monto;
+  if (montoPagado > 0) {
+    imputacion.forEach(imp => {
+      const cuota = state.cuotas.find(c => c.id === imp.cuotaId);
+      if (cuota) {
+        if (imp.parcial) {
+          cuota.estado = 'parcial';
+          cuota.saldoPendiente = imp.saldoRestante;
+          cuota.montoPagado = (cuota.montoPagado || 0) + imp.montoImputado;
+        } else {
+          cuota.estado = 'pagada';
+          cuota.fechaPago = hoy;
+          cuota.saldoPendiente = 0;
+          cuota.montoPagado = cuota.monto;
+        }
+        cuota.cobradoEfectivo = (cuota.cobradoEfectivo || 0) + montoEfectivo * (imp.montoImputado / montoPagado);
+        cuota.cobradoTransferencia = (cuota.cobradoTransferencia || 0) + montoTransferencia * (imp.montoImputado / montoPagado);
       }
-      cuota.cobradoEfectivo = (cuota.cobradoEfectivo || 0) + montoEfectivo * (imp.montoImputado / montoPagado);
-      cuota.cobradoTransferencia = (cuota.cobradoTransferencia || 0) + montoTransferencia * (imp.montoImputado / montoPagado);
-    }
-  });
+    });
+  }
 
   const cobro = {
     id: uid(),
