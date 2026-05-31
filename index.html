@@ -3,7 +3,7 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0f1117"><title>GestiónPréstamos</title>
-  <script>window.APP_VERSION = 8;</script>
+  <script>window.APP_VERSION = 9;</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -1253,8 +1253,8 @@ const calcularSaldoTeoricoFecha = (cartera, fecha) => {
   // Sumar todos los movimientos DESDE el cierre hasta la fecha pedida (acumulado)
   const cobrosRango = state.cobros.filter(c => c.fecha > fechaDesde && c.fecha <= fecha && c.cartera === cartera && !c.esVirtual);
   cobrosRango.forEach(c => {
-    saldoEfectivo += c.montoEfectivo || 0;
-    saldoTransferencia += c.montoTransferencia || 0;
+    saldoEfectivo += (c.montoEfectivo || 0) + (c.interesEfectivo || 0);
+    saldoTransferencia += (c.montoTransferencia || 0) + (c.interesTransferencia || 0);
   });
 
   const gastosRango = state.gastos.filter(g => g.fecha > fechaDesde && g.fecha <= fecha && g.cartera === cartera);
@@ -1280,8 +1280,8 @@ const calcularSaldoTeoricoFecha = (cartera, fecha) => {
   const gastosHoy = gastosRango.filter(g => g.fecha === fecha);
   const renovacionesHoy = renovacionesRango.filter(r => r.fecha === fecha);
 
-  const totalCobradoEfectivo = cobrosHoy.reduce((s, c) => s + (c.montoEfectivo || 0), 0);
-  const totalCobradoTransferencia = cobrosHoy.reduce((s, c) => s + (c.montoTransferencia || 0), 0);
+  const totalCobradoEfectivo = cobrosHoy.reduce((s, c) => s + (c.montoEfectivo || 0) + (c.interesEfectivo || 0), 0);
+  const totalCobradoTransferencia = cobrosHoy.reduce((s, c) => s + (c.montoTransferencia || 0) + (c.interesTransferencia || 0), 0);
   const totalGastosEfectivo = gastosHoy.reduce((s, g) => s + (g.montoEfectivo || 0), 0);
   const totalGastosTransferencia = gastosHoy.reduce((s, g) => s + (g.montoTransferencia || 0), 0);
   const totalRenovacionesEfectivo = renovacionesHoy.reduce((s, r) => s + (r.efectivoEntregado || 0), 0);
@@ -2451,13 +2451,10 @@ const confirmarCobro = (clienteId) => {
 
   // Usar imputación automática cronológica
   const cobro = aplicarImputacion(clienteId, montoPagado, efectivo, transferencia, mora, currentUser.name);
-  // Corregir el cobro ya guardado en state con los valores de interés
+  // Guardar interés por separado — NO sumar a montoEfectivo/montoTransferencia
   cobro.interesEfectivo = interesEfectivo;
   cobro.interesTransferencia = interesTransferencia;
   cobro.interesMora = mora + interesTotal;
-  cobro.montoEfectivo = efectivo + interesEfectivo;
-  cobro.montoTransferencia = transferencia + interesTransferencia;
-  // El cobro ya está en state.cobros (por referencia), solo guardamos
   save();
   showResumenCobro(clienteId, cobro);
 };
