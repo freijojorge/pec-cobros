@@ -3,7 +3,7 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0f1117"><title>GestiónPréstamos</title>
-  <script>window.APP_VERSION = 10;</script>
+  <script>window.APP_VERSION = 11;</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -1118,6 +1118,7 @@ const confirmarRenovacion = (planIdARenovar, clienteId, nuevoCapital, nuevaCuota
     totalCuotas,
     cuotaActual: 1,
     fechaInicio: inicio,
+    fechaEntrega: hoy,
     frecuencia,
     estado: 'activo',
     planRenovadoDesde: planIdARenovar,
@@ -1269,7 +1270,10 @@ const calcularSaldoTeoricoFecha = (cartera, fecha) => {
     saldoTransferencia -= r.transferenciaEntregada || 0;
   });
 
-  const creditosNuevosRango = state.planes.filter(p => p.fechaInicio > fechaDesde && p.fechaInicio <= fecha && p.cartera === cartera && (p.efectivoEntregado > 0 || p.transferenciaEntregada > 0));
+  const creditosNuevosRango = state.planes.filter(p => {
+    const fecha_entrega = p.fechaEntrega || p.fechaInicio;
+    return fecha_entrega > fechaDesde && fecha_entrega <= fecha && p.cartera === cartera && (p.efectivoEntregado > 0 || p.transferenciaEntregada > 0);
+  });
   creditosNuevosRango.forEach(p => {
     saldoEfectivo -= p.efectivoEntregado || 0;
     saldoTransferencia -= p.transferenciaEntregada || 0;
@@ -2723,7 +2727,7 @@ const confirmarNuevoPlan = (clienteId) => {
   const plan = {
     id: uid(), clienteId, cartera: cl.cartera,
     capital, valorCuota: cuota, totalCuotas, cuotaActual: 1,
-    fechaInicio: inicio, frecuencia, estado: 'activo',
+    fechaInicio: inicio, fechaEntrega: today(), frecuencia, estado: 'activo',
     tasaAplicada: tasa, observaciones: obs,
     efectivoEntregado, transferenciaEntregada, fondosPropios
   };
@@ -3233,7 +3237,10 @@ const renderResumenDia = (cartera, fecha) => {
   const cobrosdia = state.cobros.filter(c => c.fecha === fecha && !c.esVirtual && c.cartera === cartera);
   const gastosdia = state.gastos.filter(g => g.fecha === fecha && g.cartera === cartera);
   const renovacionesdia = state.renovaciones.filter(r => r.fecha === fecha && r.cartera === cartera);
-  const creditosNuevosdia = state.planes.filter(p => p.fechaInicio === fecha && p.cartera === cartera && (p.efectivoEntregado > 0 || p.transferenciaEntregada > 0 || p.fondosPropios > 0));
+  const creditosNuevosdia = state.planes.filter(p => {
+    const fecha_entrega = p.fechaEntrega || p.fechaInicio;
+    return fecha_entrega === fecha && p.cartera === cartera && (p.efectivoEntregado > 0 || p.transferenciaEntregada > 0 || p.fondosPropios > 0);
+  });
 
   const cobradoEf = cobrosdia.reduce((s, c) => s + (c.montoEfectivo || 0) + (c.interesEfectivo || 0), 0);
   const cobradoTr = cobrosdia.reduce((s, c) => s + (c.montoTransferencia || 0) + (c.interesTransferencia || 0), 0);
